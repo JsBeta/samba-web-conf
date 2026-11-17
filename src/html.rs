@@ -121,7 +121,7 @@ pub fn page(view: &View, active: Nav, title: &str, body: &str) -> String {
 <main>\n\
 {body}\n\
 </main>\n\
-<footer>samba-ui v{version} · 配置 {conf} · 自动备份 {backup_count} 份</footer>\n\
+<footer>samba-ui v{version} · 配置 {conf} · 自动备份 {backup_count} 份 · Powered by <a href=\"https://github.com/JsBeta/samba-web-conf\" target=\"_blank\" rel=\"noopener noreferrer\">samba-web-conf</a></footer>\n\
 <script src=\"/static/app.js\" defer></script>\n\
 </body>\n\
 </html>\n",

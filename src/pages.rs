@@ -921,6 +921,8 @@ mod tests {
         assert!(html.contains("smbcontrol all reload-config"));
         assert!(html.contains("action=\"/reload\""));
         assert!(html.contains("token-abc"));
+        assert!(html.contains("Powered by"));
+        assert!(html.contains("https://github.com/JsBeta/samba-web-conf"));
     }
 
     #[test]

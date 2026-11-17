@@ -10,6 +10,8 @@
 
 > 页面使用明文 HTTP。远程使用时请通过 SSH 隧道或带 TLS 的反向代理访问，不要直接把端口暴露到公网。
 
+预编译的 ARMv7 二进制可在 [GitHub Releases](https://github.com/JsBeta/samba-web-conf/releases) 下载。
+
 ## 快速开始
 
 ### 在本机试用
@@ -116,9 +118,9 @@ sudo ./samba-ui --allow-origin http://nas:8080
 | 文件 | 说明 | 运行要求 |
 | --- | --- | --- |
 | `dist/samba-ui-armv7-musl` | 静态链接，推荐 | 任意 ARMv7 硬浮点 Linux |
-| `dist/samba-ui-armv7-glibc` | 动态链接 | glibc ≥ 2.34，且需要 `libgcc_s.so.1` |
+| `dist/samba-ui-armv7-glibc` | 动态链接 | GitHub Release 产物需 glibc ≥ 2.18；本地构建取决于工具链（Windows 脚本实测 ≥ 2.34），且需要 `libgcc_s.so.1` |
 
-两者都是 EABI5、hard-float、ELF32、ARM 架构。不确定设备 glibc 版本时，直接用 musl 版本。
+两者都是 EABI5、hard-float、ELF32、ARM 架构。不确定设备 glibc 版本时，直接用 musl 版本。Release 中的 glibc 二进制由 CI 的 `cross` 构建，兼容性通常比本地工具链产物更好。
 
 ### 方式 A：发布包一键安装（推荐）
 

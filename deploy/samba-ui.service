@@ -1,0 +1,32 @@
+[Unit]
+Description=samba-ui - Samba smb.conf 可视化管理
+Documentation=file:/usr/local/share/doc/samba-ui/README.md
+After=network-online.target smbd.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+EnvironmentFile=/etc/samba/samba-ui.env
+ExecStart=/usr/local/bin/samba-ui --conf /etc/samba/smb.conf --bind 127.0.0.1 --port 8080
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=5
+
+# 只需要写 /etc/samba（smb.conf、备份目录）；其余路径只读。
+ProtectSystem=strict
+ReadWritePaths=/etc/samba
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictRealtime=true
+MemoryDenyWriteExecute=true
+
+[Install]
+WantedBy=multi-user.target

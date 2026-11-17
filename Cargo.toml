@@ -1,0 +1,26 @@
+[package]
+name = "samba-ui"
+version = "0.1.2"
+edition = "2021"
+rust-version = "1.70"
+description = "零依赖的极简 Samba smb.conf 可视化管理页面（ARMv7 可用）"
+license = "MIT"
+keywords = ["samba", "smb", "smb.conf", "armv7", "configuration"]
+categories = ["command-line-utilities", "web-programming"]
+
+# 刻意保持 0 依赖：只用 Rust 标准库，便于在 ARMv7 / 老式 NAS 上离线构建。
+[dependencies]
+
+[lib]
+name = "samba_ui"
+path = "src/lib.rs"
+
+[[bin]]
+name = "samba-ui"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true

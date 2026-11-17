@@ -14,9 +14,10 @@ Restart=on-failure
 RestartSec=3
 TimeoutStopSec=5
 
-# 只需要写 /etc/samba（smb.conf、备份目录）；其余路径只读。
+# 写 /etc/samba（smb.conf、备份目录）；/run/samba 供 smbcontrol 创建消息 socket。
+# 其余路径只读。若自定义了 Samba 的 lock directory，需要同步改这里。
 ProtectSystem=strict
-ReadWritePaths=/etc/samba
+ReadWritePaths=/etc/samba -/run/samba
 ProtectHome=true
 PrivateTmp=true
 PrivateDevices=true

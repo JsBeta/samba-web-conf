@@ -178,7 +178,7 @@ systemctl daemon-reload
 systemctl enable --now samba-ui
 ```
 
-unit 内容见 [deploy/samba-ui.service](deploy/samba-ui.service)。它以 root 运行，通过 `ProtectSystem=strict` + `ReadWritePaths=/etc/samba` 只允许写 Samba 配置目录。如果你把 `--backup-dir` 改到 `/etc/samba` 之外，需要同时把该目录加入 `ReadWritePaths`，否则备份会失败。
+unit 内容见 [deploy/samba-ui.service](deploy/samba-ui.service)。它以 root 运行，通过 `ProtectSystem=strict` + `ReadWritePaths=/etc/samba -/run/samba` 只允许写 Samba 配置目录和消息目录；`smbcontrol` 需要在 `/run/samba` 创建 socket，否则会报 `Unable to initialize messaging context!`。如果你把 `--backup-dir` 改到 `/etc/samba` 之外，需要同时把该目录加入 `ReadWritePaths`，否则备份会失败。如果自定义了 Samba 的 `lock directory`，也要把该目录加进去。
 
 注意：unit 的 `ExecStart` 写死了 `--bind 127.0.0.1`，命令行会覆盖 `SAMBA_UI_BIND` 环境变量。要监听局域网，需要修改 unit 里的 `--bind`（见下文）。
 

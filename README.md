@@ -434,6 +434,24 @@ cargo build --release
 
 测试包括 52 个库单元测试和 5 个端到端 HTTP 流程测试（真实监听随机端口、Basic 认证、CSRF、创建/编辑/删除共享、原始编辑、revision 冲突、只读模式、反向代理 Host、`allow-origin`、`Origin: null` 回退）。
 
+### 发布新版本
+
+版本号以 `Cargo.toml` 为准。修改版本并提交后，打 tag 推送即可自动发布：
+
+```sh
+git tag v0.1.2
+git push origin v0.1.2
+```
+
+[.github/workflows/release.yml](.github/workflows/release.yml) 会：
+
+- 使用 `cross` 构建 `armv7-unknown-linux-musleabihf` 和 `armv7-unknown-linux-gnueabihf`
+- 校验 tag（去掉 `v`）与 `Cargo.toml` 版本一致，不一致直接失败
+- 生成 `samba-ui-<版本>-armv7.zip` 和 `SHA256SUMS`
+- 创建 GitHub Release，上传两个二进制、zip 和校验文件
+
+`dist/` 是本地构建产物，不提交到 Git；Release 中的文件由 CI 生成。
+
 `cargo test` 的临时目录优先使用 `SAMBA_UI_TEST_TMP`，否则用系统临时目录，再退回 `target/test-tmp`。
 
 ## 目录结构

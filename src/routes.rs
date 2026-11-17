@@ -1,5 +1,6 @@
 //! 路由与表单处理。
 
+use std::fs;
 use std::time::Duration;
 
 use crate::app::App;
@@ -7,7 +8,8 @@ use crate::conf::{self, Doc, Edit};
 use crate::http::{self, status_code, url_encode, Request, Response};
 use crate::pages::{self, Field, GLOBAL_FIELDS, NEW_SHARE_FIELDS, SHARE_FIELDS};
 use crate::store::{CommitError, CommitInfo, Loaded};
-use crate::util;
+use crate::users;
+use crate::util::{self, RunOutcome};
 
 const APP_CSS: &str = include_str!("../assets/app.css");
 const APP_JS: &str = include_str!("../assets/app.js");
@@ -115,6 +117,8 @@ fn get(app: &App, request: &Request, parts: &[&str]) -> Response {
             },
             Err(response) => response,
         },
+        ["users"] => users_response(app, flash(request), None, None),
+        ["users", name] => user_response(app, name, flash(request), None, None),
         ["raw"] => match load(app) {
             Ok(loaded) => Response::html(
                 status_code::OK,
@@ -140,6 +144,10 @@ fn post(app: &App, parts: &[&str], form: &[(String, String)]) -> Response {
         ["shares", "new"] => create_share(app, form),
         ["shares", name] => save_share(app, name, form),
         ["shares", name, "delete"] => delete_share(app, name, form),
+        ["users", "new"] => create_samba_user(app, form),
+        ["users", name, "password"] => change_samba_password(app, name, form),
+        ["users", name, "delete"] => delete_samba_user(app, name),
+        ["users", name, "toggle"] => toggle_samba_user(app, name, form),
         ["raw"] => save_raw(app, form),
         ["reload"] => reload_samba(app),
         _ => pages::not_found(&app.view()),
@@ -180,6 +188,387 @@ fn reload_samba(app: &App) -> Response {
             )
         }
     }
+}
+
+fn samba_users(app: &App) -> Result<Vec<users::SambaUser>, String> {
+    let pdbedit = app
+        .pdbedit
+        .as_ref()
+        .ok_or_else(|| "未找到 pdbedit，请先安装 Samba 工具。".to_string())?;
+    let list = util::run_program("pdbedit -L", pdbedit, &["-L"], Duration::from_secs(15))?;
+    if !list.success() {
+        return Err(format!(
+            "pdbedit -L 失败（{}）\n{}",
+            list.summary(),
+            list.output
+        ));
+    }
+    let verbose = util::run_program("pdbedit -Lv", pdbedit, &["-Lv"], Duration::from_secs(15))
+        .ok()
+        .filter(|outcome| outcome.success())
+        .map(|outcome| outcome.output)
+        .unwrap_or_default();
+    Ok(users::merge(&list.output, &verbose))
+}
+
+fn linux_candidates(current: &[users::SambaUser]) -> Vec<users::Candidate> {
+    let passwd = fs::read_to_string("/etc/passwd").unwrap_or_default();
+    users::linux_candidates(&passwd, current)
+}
+
+fn users_response(
+    app: &App,
+    flash_code: Option<&str>,
+    error: Option<&str>,
+    detail: Option<&str>,
+) -> Response {
+    match samba_users(app) {
+        Ok(current) => {
+            let candidates = linux_candidates(&current);
+            Response::html(
+                status_code::OK,
+                pages::users_page(
+                    &app.view(),
+                    &app.csrf,
+                    &current,
+                    &candidates,
+                    error,
+                    detail,
+                    flash_code,
+                ),
+            )
+        }
+        Err(message) => pages::error_page(
+            &app.view(),
+            status_code::INTERNAL_SERVER_ERROR,
+            "读取 Samba 用户失败",
+            &message,
+            None,
+        ),
+    }
+}
+
+fn user_response(
+    app: &App,
+    name: &str,
+    flash_code: Option<&str>,
+    error: Option<&str>,
+    detail: Option<&str>,
+) -> Response {
+    match samba_users(app) {
+        Ok(current) => match current.iter().find(|user| user.name == name) {
+            Some(user) => Response::html(
+                status_code::OK,
+                pages::user_page(&app.view(), &app.csrf, user, flash_code, error, detail),
+            ),
+            None => pages::not_found(&app.view()),
+        },
+        Err(message) => pages::error_page(
+            &app.view(),
+            status_code::INTERNAL_SERVER_ERROR,
+            "读取 Samba 用户失败",
+            &message,
+            None,
+        ),
+    }
+}
+
+fn validate_username(name: &str) -> Result<(), String> {
+    if name.is_empty() || name.len() > 64 {
+        return Err("用户名长度必须在 1 到 64 个字符之间。".to_string());
+    }
+    if name.starts_with('-') || name.starts_with('.') {
+        return Err("用户名不能以 - 或 . 开头。".to_string());
+    }
+    if !name
+        .chars()
+        .all(|character| character.is_ascii_alphanumeric() || matches!(character, '_' | '-' | '.'))
+    {
+        return Err("用户名只能包含字母、数字、下划线、点号和连字符。".to_string());
+    }
+    Ok(())
+}
+
+fn password_pair(form: &[(String, String)]) -> Result<&str, String> {
+    let password = form_value(form, "password").unwrap_or("");
+    let confirm = form_value(form, "confirm").unwrap_or("");
+    let length = password.chars().count();
+    if length < 8 {
+        return Err("密码至少需要 8 个字符。".to_string());
+    }
+    if length > 128 {
+        return Err("密码不能超过 128 个字符。".to_string());
+    }
+    if password.trim().is_empty() {
+        return Err("密码不能全是空白字符。".to_string());
+    }
+    if password.chars().any(char::is_control) {
+        return Err("密码不能包含换行或控制字符。".to_string());
+    }
+    if password != confirm {
+        return Err("两次输入的密码不一致。".to_string());
+    }
+    Ok(password)
+}
+
+fn tool_error(label: &str, outcome: &RunOutcome) -> String {
+    if outcome.output.trim().is_empty() {
+        format!("{label} 失败：{}", outcome.summary())
+    } else {
+        format!(
+            "{label} 失败：{}\n{}",
+            outcome.summary(),
+            outcome.output.trim()
+        )
+    }
+}
+
+fn create_samba_user(app: &App, form: &[(String, String)]) -> Response {
+    let _guard = app.lock_saves();
+    let Some(name) = form_value(form, "name").map(str::trim) else {
+        return users_response(app, None, Some("请选择 Linux 用户。"), None);
+    };
+    if let Err(message) = validate_username(name) {
+        return users_response(app, None, Some(&message), None);
+    }
+    let password = match password_pair(form) {
+        Ok(password) => password,
+        Err(message) => return users_response(app, None, Some(&message), None),
+    };
+    let Some(pdbedit) = app.pdbedit.as_ref() else {
+        return users_response(app, None, Some("未找到 pdbedit，用户管理不可用。"), None);
+    };
+
+    let current = match samba_users(app) {
+        Ok(current) => current,
+        Err(message) => {
+            return pages::error_page(
+                &app.view(),
+                status_code::INTERNAL_SERVER_ERROR,
+                "读取 Samba 用户失败",
+                &message,
+                None,
+            )
+        }
+    };
+    if current
+        .iter()
+        .any(|user| user.name.eq_ignore_ascii_case(name))
+    {
+        return users_response(app, None, Some("该用户已经有 Samba 账户。"), None);
+    }
+    let candidates = linux_candidates(&current);
+    if !candidates.iter().any(|candidate| candidate.name == name) {
+        return users_response(
+            app,
+            None,
+            Some("Linux 用户不存在，或 UID 小于 1000。请先创建 Linux 用户。"),
+            None,
+        );
+    }
+
+    let input = format!("{password}\n{password}\n");
+    let outcome = match util::run_program_input(
+        "pdbedit -a",
+        pdbedit,
+        &["-a", "-u", name, "-t"],
+        &input,
+        Duration::from_secs(20),
+    ) {
+        Ok(outcome) => outcome,
+        Err(message) => return users_response(app, None, Some(&message), None),
+    };
+    if !outcome.success() {
+        return users_response(
+            app,
+            None,
+            Some("创建 Samba 用户失败。"),
+            Some(&tool_error("pdbedit", &outcome)),
+        );
+    }
+
+    util::info(format!("已创建 Samba 用户 {name}"));
+    Response::redirect("/users?msg=user_created")
+}
+
+fn change_samba_password(app: &App, name: &str, form: &[(String, String)]) -> Response {
+    let _guard = app.lock_saves();
+    if let Err(message) = validate_username(name) {
+        return pages::bad_request(&app.view(), &message);
+    }
+    let password = match password_pair(form) {
+        Ok(password) => password,
+        Err(message) => return user_response(app, name, None, Some(&message), None),
+    };
+    let Some(pdbedit) = app.pdbedit.as_ref() else {
+        return user_response(
+            app,
+            name,
+            None,
+            Some("未找到 pdbedit，用户管理不可用。"),
+            None,
+        );
+    };
+    match samba_users(app) {
+        Ok(current) if current.iter().any(|user| user.name == name) => {}
+        Ok(_) => return pages::not_found(&app.view()),
+        Err(message) => {
+            return pages::error_page(
+                &app.view(),
+                status_code::INTERNAL_SERVER_ERROR,
+                "读取 Samba 用户失败",
+                &message,
+                None,
+            )
+        }
+    }
+
+    let input = format!("{password}\n{password}\n");
+    let outcome = match util::run_program_input(
+        "pdbedit -r",
+        pdbedit,
+        &["-r", "-u", name, "-t"],
+        &input,
+        Duration::from_secs(20),
+    ) {
+        Ok(outcome) => outcome,
+        Err(message) => return user_response(app, name, None, Some(&message), None),
+    };
+    if !outcome.success() {
+        return user_response(
+            app,
+            name,
+            None,
+            Some("更新 Samba 密码失败。"),
+            Some(&tool_error("pdbedit", &outcome)),
+        );
+    }
+
+    util::info(format!("已更新 Samba 用户密码: {name}"));
+    Response::redirect(&format!("/users/{}?msg=password_changed", url_encode(name)))
+}
+
+fn delete_samba_user(app: &App, name: &str) -> Response {
+    let _guard = app.lock_saves();
+    if let Err(message) = validate_username(name) {
+        return pages::bad_request(&app.view(), &message);
+    }
+    let Some(pdbedit) = app.pdbedit.as_ref() else {
+        return user_response(
+            app,
+            name,
+            None,
+            Some("未找到 pdbedit，用户管理不可用。"),
+            None,
+        );
+    };
+    match samba_users(app) {
+        Ok(current) if current.iter().any(|user| user.name == name) => {}
+        Ok(_) => return pages::not_found(&app.view()),
+        Err(message) => {
+            return pages::error_page(
+                &app.view(),
+                status_code::INTERNAL_SERVER_ERROR,
+                "读取 Samba 用户失败",
+                &message,
+                None,
+            )
+        }
+    }
+
+    let outcome = match util::run_program(
+        "pdbedit -x",
+        pdbedit,
+        &["-x", "-u", name],
+        Duration::from_secs(20),
+    ) {
+        Ok(outcome) => outcome,
+        Err(message) => return user_response(app, name, None, Some(&message), None),
+    };
+    if !outcome.success() {
+        return user_response(
+            app,
+            name,
+            None,
+            Some("删除 Samba 用户失败。"),
+            Some(&tool_error("pdbedit", &outcome)),
+        );
+    }
+
+    util::info(format!("已删除 Samba 用户 {name}"));
+    Response::redirect("/users?msg=user_deleted")
+}
+
+fn toggle_samba_user(app: &App, name: &str, form: &[(String, String)]) -> Response {
+    let _guard = app.lock_saves();
+    if let Err(message) = validate_username(name) {
+        return pages::bad_request(&app.view(), &message);
+    }
+    let action = form_value(form, "action").unwrap_or("");
+    let enable = match action {
+        "enable" => true,
+        "disable" => false,
+        _ => return pages::bad_request(&app.view(), "未知的用户状态操作。"),
+    };
+    let Some(smbpasswd) = app.smbpasswd.as_ref() else {
+        return user_response(
+            app,
+            name,
+            None,
+            Some("未找到 smbpasswd，用户管理不可用。"),
+            None,
+        );
+    };
+    match samba_users(app) {
+        Ok(current) if current.iter().any(|user| user.name == name) => {}
+        Ok(_) => return pages::not_found(&app.view()),
+        Err(message) => {
+            return pages::error_page(
+                &app.view(),
+                status_code::INTERNAL_SERVER_ERROR,
+                "读取 Samba 用户失败",
+                &message,
+                None,
+            )
+        }
+    }
+
+    let args = if enable {
+        vec!["-e", name]
+    } else {
+        vec!["-d", name]
+    };
+    let outcome = match util::run_program("smbpasswd", smbpasswd, &args, Duration::from_secs(20)) {
+        Ok(outcome) => outcome,
+        Err(message) => return user_response(app, name, None, Some(&message), None),
+    };
+    if !outcome.success() {
+        return user_response(
+            app,
+            name,
+            None,
+            Some(if enable {
+                "启用用户失败。"
+            } else {
+                "禁用用户失败。"
+            }),
+            Some(&tool_error("smbpasswd", &outcome)),
+        );
+    }
+
+    util::info(format!(
+        "{} Samba 用户 {name}",
+        if enable { "已启用" } else { "已禁用" }
+    ));
+    Response::redirect(&format!(
+        "/users/{}?msg={}",
+        url_encode(name),
+        if enable {
+            "user_enabled"
+        } else {
+            "user_disabled"
+        }
+    ))
 }
 
 fn save_global(app: &App, form: &[(String, String)]) -> Response {

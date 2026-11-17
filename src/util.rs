@@ -3,7 +3,7 @@
 use std::collections::hash_map::RandomState;
 use std::fs::File;
 use std::hash::{BuildHasher, Hasher};
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -217,10 +217,42 @@ pub fn run_shell(label: &str, script: &str, timeout: Duration) -> Result<RunOutc
     run_command(label, cmd, timeout)
 }
 
+pub fn run_program(
+    label: &str,
+    program: &Path,
+    args: &[&str],
+    timeout: Duration,
+) -> Result<RunOutcome, String> {
+    let mut cmd = Command::new(program);
+    cmd.args(args);
+    run_command(label, cmd, timeout)
+}
+
+pub fn run_program_input(
+    label: &str,
+    program: &Path,
+    args: &[&str],
+    input: &str,
+    timeout: Duration,
+) -> Result<RunOutcome, String> {
+    let mut cmd = Command::new(program);
+    cmd.args(args);
+    run_command_with_input(label, cmd, Some(input), timeout)
+}
+
 /// 运行子进程并将 stdout/stderr 重定向到临时文件，以支持超时控制。
 ///
 /// 不直接使用管道，避免在受限环境下管道不可用或子进程阻塞。
-fn run_command(label: &str, mut cmd: Command, timeout: Duration) -> Result<RunOutcome, String> {
+fn run_command(label: &str, cmd: Command, timeout: Duration) -> Result<RunOutcome, String> {
+    run_command_with_input(label, cmd, None, timeout)
+}
+
+fn run_command_with_input(
+    label: &str,
+    mut cmd: Command,
+    input: Option<&str>,
+    timeout: Duration,
+) -> Result<RunOutcome, String> {
     let id = next_id();
     let dir = std::env::temp_dir();
     let out_path = dir.join(format!("samba-ui-{}-{id}.out", std::process::id()));
@@ -229,11 +261,21 @@ fn run_command(label: &str, mut cmd: Command, timeout: Duration) -> Result<RunOu
     let result = (|| -> Result<RunOutcome, String> {
         let out = File::create(&out_path).map_err(|e| format!("无法创建临时输出文件: {e}"))?;
         let err = File::create(&err_path).map_err(|e| format!("无法创建临时输出文件: {e}"))?;
-        cmd.stdin(Stdio::null())
-            .stdout(Stdio::from(out))
-            .stderr(Stdio::from(err));
+        cmd.stdin(if input.is_some() {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        })
+        .stdout(Stdio::from(out))
+        .stderr(Stdio::from(err));
 
         let mut child = cmd.spawn().map_err(|e| format!("无法启动 {label}: {e}"))?;
+
+        if let Some(data) = input {
+            if let Some(mut stdin) = child.stdin.take() {
+                let _ = stdin.write_all(data.as_bytes());
+            }
+        }
 
         let started = Instant::now();
         let mut timed_out = false;

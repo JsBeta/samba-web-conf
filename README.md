@@ -6,7 +6,7 @@
 - 修改时保留注释、空行、参数顺序、缩进、大小写、CRLF/BOM。
 - 写盘前校验（`testparm`）、写盘时原子替换、写盘后自动备份并可自动重载 Samba。
 - 默认只监听 `127.0.0.1`，内置 HTTP Basic 认证、CSRF 防护、Origin 校验和严格 CSP。
-- 提供中文界面：概览、全局设置、共享编辑、新建/删除共享、原始文件编辑、一键重载 Samba。
+- 提供中文界面：概览、全局设置、共享编辑、新建/删除共享、Samba 用户管理、原始文件编辑、一键重载 Samba。
 
 > 页面使用明文 HTTP。远程使用时请通过 SSH 隧道或带 TLS 的反向代理访问，不要直接把端口暴露到公网。
 
@@ -44,10 +44,10 @@ sudo ./target/release/samba-ui --conf /etc/samba/smb.conf
 最短路径（发布包已构建好的情况）：
 
 ```sh
-scp dist/samba-ui-0.1.4-armv7.zip root@nas:/tmp/
+scp dist/samba-ui-0.1.5-armv7.zip root@nas:/tmp/
 ssh root@nas
 cd /tmp
-unzip samba-ui-0.1.4-armv7.zip -d samba-ui
+unzip samba-ui-0.1.5-armv7.zip -d samba-ui
 cd samba-ui
 sh deploy/install.sh ./samba-ui-armv7-musl
 vi /etc/samba/samba-ui.env      # 设置 SAMBA_UI_USER / SAMBA_UI_PASSWORD
@@ -127,10 +127,10 @@ sudo ./samba-ui --allow-origin http://nas:8080
 把发布包传到设备并解压：
 
 ```sh
-scp dist/samba-ui-0.1.4-armv7.zip root@nas:/tmp/
+scp dist/samba-ui-0.1.5-armv7.zip root@nas:/tmp/
 ssh root@nas
 cd /tmp
-unzip samba-ui-0.1.4-armv7.zip -d samba-ui
+unzip samba-ui-0.1.5-armv7.zip -d samba-ui
 cd samba-ui
 sh deploy/install.sh ./samba-ui-armv7-musl
 ```
@@ -178,7 +178,7 @@ systemctl daemon-reload
 systemctl enable --now samba-ui
 ```
 
-unit 内容见 [deploy/samba-ui.service](deploy/samba-ui.service)。它以 root 运行，通过 `ProtectSystem=strict` + `ReadWritePaths=/etc/samba -/run/samba` 只允许写 Samba 配置目录和消息目录；`smbcontrol` 需要在 `/run/samba` 创建 socket，否则会报 `Unable to initialize messaging context!`。如果你把 `--backup-dir` 改到 `/etc/samba` 之外，需要同时把该目录加入 `ReadWritePaths`，否则备份会失败。如果自定义了 Samba 的 `lock directory`，也要把该目录加进去。
+unit 内容见 [deploy/samba-ui.service](deploy/samba-ui.service)。它以 root 运行，通过 `ProtectSystem=strict` + `ReadWritePaths=/etc/samba /var/lib/samba -/run/samba` 只允许写 Samba 配置目录、用户数据库和消息目录；用户管理需要写 `/var/lib/samba`，`smbcontrol` 需要在 `/run/samba` 创建 socket，否则会报 `Unable to initialize messaging context!`。如果你把 `--backup-dir` 改到 `/etc/samba` 之外，需要同时把该目录加入 `ReadWritePaths`，否则备份会失败。如果自定义了 Samba 的 `lock directory` 或 passdb 路径，也要把对应目录加进去。
 
 注意：unit 的 `ExecStart` 写死了 `--bind 127.0.0.1`，命令行会覆盖 `SAMBA_UI_BIND` 环境变量。要监听局域网，需要修改 unit 里的 `--bind`（见下文）。
 
@@ -192,7 +192,7 @@ sudo ./samba-ui-armv7-musl --conf /etc/samba/smb.conf --port 8080
 看到类似日志就成功了：
 
 ```text
-samba-ui v0.1.4 已启动: http://127.0.0.1:8080/
+samba-ui v0.1.5 已启动: http://127.0.0.1:8080/
 配置文件: /etc/samba/smb.conf
 语法校验: testparm；保存后重载: smbcontrol all reload-config
 ```
@@ -337,6 +337,21 @@ sha256sum -c SHA256SUMS
 - 成功会回到概览并提示；失败会显示退出码和命令输出；
 - `--no-reload` 时会提示未配置重载命令，`--read-only` 模式下按钮隐藏。
 
+### 用户管理
+
+页头的“用户管理”只在检测到 `pdbedit` 和 `smbpasswd` 时显示。
+
+- 列出 Samba 用户、UID、全名和启用/禁用状态。
+- **创建用户**：只列出 `/etc/passwd` 中 UID ≥ 1000 且还没有 Samba 账户的 Linux 用户。它创建的是 Samba 账户和 Samba 密码，**不会创建 Linux 用户**；列表为空时先执行 `sudo adduser 用户名`。
+- **修改密码**：至少 8 个字符；密码通过 stdin 传给 `pdbedit -t`，不出现在命令行参数或日志里。
+- **启用/禁用**：只切换 Samba 账户状态，不修改 Linux 用户。
+- **删除**：只从 Samba 用户数据库删除，不删除 Linux 用户和主目录。
+- **只读模式**：隐藏创建、改密、启停和删除操作。
+
+`pdbedit` 只更新 Samba 用户数据库，不调用 `unix password sync`，因此 Samba 密码和 Linux 登录密码可以不同，这是正常现象。用户管理需要 root 权限，systemd unit 需要允许写 `/var/lib/samba`。
+
+> 密码会通过当前 HTTP 连接发送。只在本机、SSH 隧道或 TLS 反向代理下使用，不要在不可信网络中创建或修改密码。
+
 ### 全局设置
 
 - “常用参数”是表单：工作组、`security`、协议版本、日志、字符集等。
@@ -411,6 +426,7 @@ smbcontrol all reload-config
 - **原子写入**：临时文件 + `fsync` + `rename`；写入前保留时间戳备份；不会出现写一半的配置。
 - **并发冲突**：保存时比较 revision（mtime+长度），期间被其他程序改过则返回 409，不覆盖别人的修改。
 - **只读模式**：`--read-only` 在路由层拒绝所有写请求。
+- **用户管理**：Samba 密码通过 POST 请求体传输，服务端用 stdin 传给 `pdbedit -t`，不出现在命令行参数或日志中；页面会提示必须通过本机、SSH 隧道或 TLS 代理使用。
 - **进程加固**：systemd unit 启用 `ProtectSystem=strict`、`ProtectHome`、`PrivateTmp` 等选项。
 
 没有 TLS。远程访问请使用 SSH 隧道，或在前面放 Nginx/Caddy 做 TLS 终止。
@@ -444,15 +460,15 @@ cargo test
 cargo build --release
 ```
 
-测试包括 52 个库单元测试和 6 个端到端 HTTP 流程测试（真实监听随机端口、Basic 认证、CSRF、创建/编辑/删除共享、原始编辑、revision 冲突、只读模式、反向代理 Host、`allow-origin`、`Origin: null` 回退、手动重载）。
+测试包括 58 个库单元测试和 6 个端到端 HTTP 流程测试（真实监听随机端口、Basic 认证、CSRF、创建/编辑/删除共享、原始编辑、revision 冲突、只读模式、反向代理 Host、`allow-origin`、`Origin: null` 回退、手动重载、用户列表解析）。
 
 ### 发布新版本
 
 版本号以 `Cargo.toml` 为准。修改版本并提交后，打 tag 推送即可自动发布：
 
 ```sh
-git tag v0.1.4
-git push origin v0.1.4
+git tag v0.1.5
+git push origin v0.1.5
 ```
 
 [.github/workflows/release.yml](.github/workflows/release.yml) 会：
@@ -474,6 +490,7 @@ src/
   lib.rs       模块导出与 run()
   args.rs      命令行/环境变量
   app.rs       服务装配、监听循环、连接限制
+  users.rs     Samba 用户列表解析与 Linux 用户候选筛选
   routes.rs    路由、表单解析、CSRF/Origin、提交逻辑
   pages.rs     各页面 HTML
   html.rs      页面骨架与表单控件
@@ -490,7 +507,7 @@ tests/         端到端 HTTP 测试
 
 ## 发布包内容
 
-`dist/samba-ui-0.1.4-armv7.zip` 解压后包含：
+`dist/samba-ui-0.1.5-armv7.zip` 解压后包含：
 
 ```
 samba-ui-armv7-musl      静态链接二进制（推荐）
@@ -512,6 +529,7 @@ examples/smb.conf
 - 不做信号处理；收到 SIGTERM 由 systemd 直接结束，原子写入保证文件不会写坏。
 - 常用字段留空会删除参数；要写空值请使用“其他参数/新增参数”。
 - 依赖 `testparm` 与 `smbcontrol` 才能做校验和自动重载；没有它们时请加 `--no-testparm --no-reload`。
+- 用户管理依赖 `pdbedit` 和 `smbpasswd`，需要 root；只管理 Samba 账户，不创建/删除 Linux 用户。
 - 删除共享、修改共享名等操作没有回收站，只有保存前的备份。
 
 ## 常见问题
@@ -527,6 +545,9 @@ examples/smb.conf
 | 端口被占用 | 加 `--port 8081` |
 | 没有 `testparm` | Debian/Ubuntu 安装 `samba-common-bin`，或临时 `--no-testparm` |
 | 设备上运行报 GLIBC 版本错误 | 换用静态 musl 版本 |
+| 用户管理不可用 | 安装 `samba-common-bin`，确认 `pdbedit`、`smbpasswd` 在 PATH，重启 samba-ui |
+| 创建用户提示 Linux 用户不存在 | 先 `sudo adduser 用户名`，再回页面刷新 |
+| 改密后 Windows 仍用旧密码 | 断开旧连接或清理 Windows 凭据后重连；Samba 密码已立即更新 |
 | 忘记密码 | 修改 `/etc/samba/samba-ui.env` 后 `systemctl restart samba-ui` |
 
 **启动报“无法打开配置文件”**
@@ -577,6 +598,25 @@ smbcontrol all reload-config
 **保存时错误页显示 `Origin: null`**
 
 这是浏览器发送的 `Origin` 头，不是服务器配置问题。隐私插件、沙箱 iframe、部分内嵌预览或浏览器隐私模式会把它设为 `null`。0.1.2 起不再直接拒绝，而是回退到 CSRF token 校验；升级后即可正常保存。CSRF token 仍然必须正确，因此不会降低跨站防护。
+
+**用户管理页面提示不可用**
+
+需要系统里有 `pdbedit` 和 `smbpasswd`（Debian/Ubuntu 通常在 `samba-common-bin` 包中），且 samba-ui 以 root 运行。安装后重启 samba-ui：
+
+```sh
+sudo apt-get install -y samba-common-bin
+sudo systemctl restart samba-ui
+```
+
+**改密后 Windows 仍然连不上或提示旧密码**
+
+Samba 密码已经更新，但 Windows 可能缓存了旧会话。先清理：
+
+```cmd
+net use * /delete /y
+```
+
+然后在“凭据管理器”里删除 `192.168.100.10` 的旧记录，重新连接。
 
 **忘记密码**
 

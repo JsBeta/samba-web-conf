@@ -4,6 +4,7 @@ use crate::conf::Doc;
 use crate::html::{self, Nav, View};
 use crate::http::{status_code, url_encode, Response};
 use crate::store::CommitInfo;
+use crate::users::{Candidate, SambaUser};
 use crate::util::RunOutcome;
 
 pub struct Field {
@@ -707,6 +708,244 @@ pub fn new_share_page(
     html::page(view, Nav::Global, "新建共享", &body)
 }
 
+pub fn users_page(
+    view: &View,
+    csrf: &str,
+    users: &[SambaUser],
+    candidates: &[Candidate],
+    error: Option<&str>,
+    error_detail: Option<&str>,
+    flash_code: Option<&str>,
+) -> String {
+    let mut body = String::new();
+    body.push_str("<h1>用户管理</h1>");
+    body.push_str(&html::flash(flash_code));
+    if let Some(error) = error {
+        body.push_str(&html::banner("err", error));
+    }
+    if let Some(detail) = error_detail {
+        body.push_str(&html::detail_block("命令输出", detail));
+    }
+    if view.read_only {
+        body.push_str(&html::banner(
+            "warn",
+            "只读模式：可以查看用户，但不能创建、改密、禁用或删除。",
+        ));
+    }
+    if !view.users_enabled {
+        body.push_str(&html::banner(
+            "err",
+            "未找到 pdbedit 或 smbpasswd，用户管理不可用。请安装 Samba 工具后重启服务。",
+        ));
+    }
+    body.push_str(&html::banner(
+        "warn",
+        "Samba 密码会通过当前 HTTP 连接发送。请只在本机、SSH 隧道或 TLS 反向代理下使用，不要在不可信网络中操作。",
+    ));
+
+    body.push_str(
+        "<div class=\"card\"><div class=\"card-head\"><h2>Samba 用户</h2>\
+         <span class=\"pill\">共 ",
+    );
+    body.push_str(&users.len().to_string());
+    body.push_str(" 个</span></div>");
+
+    if users.is_empty() {
+        body.push_str("<p class=\"muted\">还没有 Samba 用户。</p>");
+    } else {
+        body.push_str(
+            "<div class=\"table-wrap\"><table><thead><tr>\
+               <th>用户名</th><th>UID</th><th>全名</th><th>状态</th><th>操作</th>\
+             </tr></thead><tbody>",
+        );
+        for user in users {
+            let encoded = url_encode(&user.name);
+            let status = if user.enabled {
+                "<span class=\"pill\">已启用</span>"
+            } else {
+                "<span class=\"pill warn\">已禁用</span>"
+            };
+            let uid = user
+                .uid
+                .map(|uid| uid.to_string())
+                .unwrap_or_else(|| "-".to_string());
+            body.push_str(&format!(
+                "<tr>\
+                   <td><a href=\"/users/{encoded}\" class=\"mono\">{name}</a></td>\
+                   <td class=\"mono\">{uid}</td>\
+                   <td>{full_name}</td>\
+                   <td>{status}</td>\
+                   <td><a class=\"btn small\" href=\"/users/{encoded}\">管理</a></td>\
+                 </tr>",
+                encoded = encoded,
+                name = html::escape(&user.name),
+                uid = html::escape(&uid),
+                full_name = html::escape(&user.full_name),
+                status = status,
+            ));
+        }
+        body.push_str("</tbody></table></div>");
+    }
+    body.push_str("</div>");
+
+    body.push_str("<div class=\"card\"><h2>创建 Samba 用户</h2>");
+    if !view.users_enabled {
+        body.push_str("<p class=\"muted\">需要先安装并提供 pdbedit、smbpasswd。</p>");
+    } else if view.read_only {
+        body.push_str("<p class=\"muted\">只读模式下不能创建用户。</p>");
+    } else if candidates.is_empty() {
+        body.push_str(
+            "<p class=\"muted\">没有可用的 Linux 用户。Samba 用户必须对应一个已存在的 Linux 用户，\
+             请先执行 <code>sudo adduser 用户名</code>，再刷新本页。</p>",
+        );
+    } else {
+        body.push_str(
+            "<p class=\"muted\">只创建 Samba 账户和密码，不会创建 Linux 用户，也不会修改 Linux 密码。\
+             只列出 UID ≥ 1000 且还没有 Samba 账户的用户。</p>",
+        );
+        body.push_str("<form method=\"post\" action=\"/users/new\">");
+        body.push_str(&html::csrf_field(csrf));
+        body.push_str("<div class=\"grid\">");
+
+        let names: Vec<&str> = candidates
+            .iter()
+            .map(|candidate| candidate.name.as_str())
+            .collect();
+        body.push_str(&html::field(
+            "Linux 用户",
+            &html::select_input("name", "", &names, "（选择用户）"),
+            "不会创建 Linux 用户",
+        ));
+        body.push_str(&html::field(
+            "Samba 密码",
+            &html::password_input("password", "至少 8 位"),
+            "",
+        ));
+        body.push_str(&html::field(
+            "确认密码",
+            &html::password_input("confirm", "再次输入"),
+            "",
+        ));
+        body.push_str("</div><div class=\"actions\">");
+        body.push_str(&html::submit("创建 Samba 用户"));
+        body.push_str(&html::link_button("/users", "刷新列表"));
+        body.push_str("</div></form>");
+    }
+    body.push_str("</div>");
+
+    html::page(view, Nav::Users, "用户管理", &body)
+}
+
+pub fn user_page(
+    view: &View,
+    csrf: &str,
+    user: &SambaUser,
+    flash_code: Option<&str>,
+    error: Option<&str>,
+    error_detail: Option<&str>,
+) -> String {
+    let encoded = url_encode(&user.name);
+    let mut body = String::new();
+    body.push_str(&format!(
+        "<h1>用户 <span class=\"pill mono\">{}</span></h1>",
+        html::escape(&user.name)
+    ));
+    body.push_str(&html::flash(flash_code));
+    if let Some(error) = error {
+        body.push_str(&html::banner("err", error));
+    }
+    if let Some(detail) = error_detail {
+        body.push_str(&html::detail_block("命令输出", detail));
+    }
+    if view.read_only {
+        body.push_str(&html::banner(
+            "warn",
+            "只读模式：不能修改密码、启停或删除用户。",
+        ));
+    }
+
+    body.push_str("<div class=\"card\"><h2>账户信息</h2><div class=\"table-wrap\"><table><tbody>");
+    body.push_str(&format!(
+        "<tr><th class=\"key\">用户名</th><td class=\"mono\">{}</td></tr>",
+        html::escape(&user.name)
+    ));
+    body.push_str(&format!(
+        "<tr><th class=\"key\">UID</th><td class=\"mono\">{}</td></tr>",
+        user.uid
+            .map(|uid| uid.to_string())
+            .unwrap_or_else(|| "-".to_string())
+    ));
+    body.push_str(&format!(
+        "<tr><th class=\"key\">全名</th><td>{}</td></tr>",
+        html::escape(&user.full_name)
+    ));
+    body.push_str(&format!(
+        "<tr><th class=\"key\">状态</th><td>{}</td></tr>",
+        if user.enabled {
+            "<span class=\"pill\">已启用</span>"
+        } else {
+            "<span class=\"pill warn\">已禁用</span>"
+        }
+    ));
+    body.push_str("</tbody></table></div></div>");
+
+    if !view.read_only && view.users_enabled {
+        body.push_str("<div class=\"card\"><h2>修改 Samba 密码</h2>");
+        body.push_str(&format!(
+            "<form method=\"post\" action=\"/users/{encoded}/password\">"
+        ));
+        body.push_str(&html::csrf_field(csrf));
+        body.push_str("<div class=\"grid\">");
+        body.push_str(&html::field(
+            "新密码",
+            &html::password_input("password", "至少 8 位"),
+            "",
+        ));
+        body.push_str(&html::field(
+            "确认新密码",
+            &html::password_input("confirm", "再次输入"),
+            "",
+        ));
+        body.push_str("</div><div class=\"actions\">");
+        body.push_str(&html::submit("更新密码"));
+        body.push_str("</div></form></div>");
+
+        body.push_str("<div class=\"card\"><h2>账户状态</h2>");
+        body.push_str(&format!(
+            "<form method=\"post\" action=\"/users/{encoded}/toggle\">"
+        ));
+        body.push_str(&html::csrf_field(csrf));
+        body.push_str(&html::hidden(
+            "action",
+            if user.enabled { "disable" } else { "enable" },
+        ));
+        body.push_str(&format!(
+            "<button type=\"submit\" class=\"btn\">{}</button>",
+            if user.enabled {
+                "禁用此用户"
+            } else {
+                "启用此用户"
+            }
+        ));
+        body.push_str("</form></div>");
+
+        body.push_str(&format!(
+            "<form class=\"danger-zone\" method=\"post\" action=\"/users/{encoded}/delete\" \
+             data-confirm=\"确定删除 Samba 用户 [{name}] 吗？Linux 用户不会被删除。\">\
+             {csrf}<button type=\"submit\" class=\"btn danger\">删除 Samba 用户</button>\
+             </form>",
+            encoded = encoded,
+            name = html::escape(&user.name),
+            csrf = html::csrf_field(csrf),
+        ));
+    }
+
+    body.push_str("<div class=\"actions\">");
+    body.push_str(&html::link_button("/users", "返回用户列表"));
+    body.push_str("</div>");
+    html::page(view, Nav::Users, &format!("用户 {}", user.name), &body)
+}
+
 pub fn raw_page(
     view: &View,
     csrf: &str,
@@ -957,6 +1196,67 @@ mod tests {
         );
         assert!(page.contains("&lt;x&gt;"));
         assert!(!page.contains("comment = <x>"));
+    }
+
+    #[test]
+    fn users_page_escapes_names_and_renders_forms() {
+        let (conf, validator, warnings) = view();
+        let view = View::new(
+            &conf,
+            false,
+            false,
+            &validator,
+            "smbcontrol all reload-config",
+            "/backups",
+            0,
+            &warnings,
+        )
+        .with_csrf("token")
+        .with_users(true);
+        let users = vec![SambaUser {
+            name: "a<b".to_string(),
+            uid: Some(1000),
+            full_name: "<script>".to_string(),
+            enabled: false,
+        }];
+        let candidates = vec![Candidate {
+            name: "bob".to_string(),
+            uid: 1001,
+            full_name: "Bob".to_string(),
+        }];
+        let page = users_page(&view, "token", &users, &candidates, None, None, None);
+        assert!(page.contains("a&lt;b"));
+        assert!(page.contains("&lt;script&gt;"));
+        assert!(page.contains("action=\"/users/new\""));
+        assert!(page.contains("name=\"password\""));
+        assert!(page.contains("已禁用"));
+    }
+
+    #[test]
+    fn user_page_renders_password_and_delete_forms() {
+        let (conf, validator, warnings) = view();
+        let view = View::new(
+            &conf,
+            false,
+            false,
+            &validator,
+            "smbcontrol all reload-config",
+            "/backups",
+            0,
+            &warnings,
+        )
+        .with_csrf("token")
+        .with_users(true);
+        let user = SambaUser {
+            name: "admin".to_string(),
+            uid: Some(1000),
+            full_name: "Admin".to_string(),
+            enabled: true,
+        };
+        let page = user_page(&view, "token", &user, None, None, None);
+        assert!(page.contains("action=\"/users/admin/password\""));
+        assert!(page.contains("action=\"/users/admin/toggle\""));
+        assert!(page.contains("action=\"/users/admin/delete\""));
     }
 
     #[test]

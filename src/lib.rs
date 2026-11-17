@@ -8,6 +8,7 @@ pub mod http;
 pub mod pages;
 pub mod routes;
 pub mod store;
+pub mod users;
 pub mod util;
 
 pub use app::run;

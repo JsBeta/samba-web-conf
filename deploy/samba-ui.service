@@ -9,15 +9,17 @@ Type=simple
 User=root
 Group=root
 EnvironmentFile=/etc/samba/samba-ui.env
+Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 ExecStart=/usr/local/bin/samba-ui --conf /etc/samba/smb.conf --bind 127.0.0.1 --port 8080
 Restart=on-failure
 RestartSec=3
 TimeoutStopSec=5
 
-# 写 /etc/samba（smb.conf、备份目录）；/run/samba 供 smbcontrol 创建消息 socket。
-# 其余路径只读。若自定义了 Samba 的 lock directory，需要同步改这里。
+# 写 /etc/samba（配置/备份）、/var/lib/samba（用户数据库）；
+# /run/samba 供 smbcontrol 创建消息 socket。其余路径只读。
+# 若自定义了 Samba 的 lock directory 或 passdb 路径，需要同步改这里。
 ProtectSystem=strict
-ReadWritePaths=/etc/samba -/run/samba
+ReadWritePaths=/etc/samba /var/lib/samba -/run/samba
 ProtectHome=true
 PrivateTmp=true
 PrivateDevices=true

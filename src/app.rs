@@ -34,6 +34,8 @@ pub struct App {
     pub validator_label: String,
     pub reload_label: String,
     pub backup_dir_display: String,
+    pub pdbedit: Option<PathBuf>,
+    pub smbpasswd: Option<PathBuf>,
     saves: Mutex<()>,
     conns: AtomicUsize,
 }
@@ -86,6 +88,12 @@ impl App {
             ));
         }
 
+        let pdbedit = util::find_in_path("pdbedit");
+        let smbpasswd = util::find_in_path("smbpasswd");
+        if pdbedit.is_none() || smbpasswd.is_none() {
+            warnings.push("未找到 pdbedit 或 smbpasswd：用户管理不可用。".to_string());
+        }
+
         let store = Store::new(
             conf.clone(),
             opts.backup_dir.clone(),
@@ -110,6 +118,8 @@ impl App {
             validator_label,
             reload_label,
             backup_dir_display,
+            pdbedit,
+            smbpasswd,
             saves: Mutex::new(()),
             conns: AtomicUsize::new(0),
         })
@@ -127,6 +137,7 @@ impl App {
             &self.warnings,
         )
         .with_csrf(&self.csrf)
+        .with_users(self.pdbedit.is_some() && self.smbpasswd.is_some())
     }
 
     pub fn lock_saves(&self) -> MutexGuard<'_, ()> {

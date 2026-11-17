@@ -128,13 +128,14 @@ pub struct ShellReloader {
 impl Reloader for ShellReloader {
     fn reload(&self) -> Option<RunOutcome> {
         Some(
-            util::run_shell("reload", &self.command, Duration::from_secs(15)).unwrap_or(
-                RunOutcome {
+            match util::run_shell("reload", &self.command, Duration::from_secs(15)) {
+                Ok(outcome) => outcome,
+                Err(message) => RunOutcome {
                     exit_code: None,
                     timed_out: false,
-                    output: "无法执行重载命令".to_string(),
+                    output: message,
                 },
-            ),
+            },
         )
     }
 

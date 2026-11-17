@@ -6,6 +6,7 @@ use crate::VERSION;
 pub enum Nav {
     Dashboard,
     Global,
+    Users,
     Raw,
     None,
 }
@@ -21,6 +22,7 @@ pub struct View<'a> {
     pub warnings: &'a [String],
     pub version: &'a str,
     pub csrf: &'a str,
+    pub users_enabled: bool,
 }
 
 impl<'a> View<'a> {
@@ -46,11 +48,17 @@ impl<'a> View<'a> {
             warnings,
             version: VERSION,
             csrf: "",
+            users_enabled: false,
         }
     }
 
     pub fn with_csrf(mut self, csrf: &'a str) -> View<'a> {
         self.csrf = csrf;
+        self
+    }
+
+    pub fn with_users(mut self, users_enabled: bool) -> View<'a> {
+        self.users_enabled = users_enabled;
         self
     }
 }
@@ -94,6 +102,11 @@ pub fn page(view: &View, active: Nav, title: &str, body: &str) -> String {
             csrf = hidden("_csrf", view.csrf)
         )
     };
+    let users_nav = if view.users_enabled {
+        format!("<a href=\"/users\"{}>用户管理</a>", class(Nav::Users))
+    } else {
+        String::new()
+    };
     let conf = escape(view.conf);
     format!(
         "<!doctype html>\n\
@@ -112,6 +125,7 @@ pub fn page(view: &View, active: Nav, title: &str, body: &str) -> String {
     <a href=\"/\"{dash}>概览</a>\n\
     <a href=\"/global\"{global}>全局设置</a>\n\
     <a href=\"/raw\"{raw}>原始编辑</a>\n\
+    {users_nav}\n\
   </nav>\n\
   <span class=\"spacer\"></span>\n\
   {reload}\n\
@@ -129,6 +143,7 @@ pub fn page(view: &View, active: Nav, title: &str, body: &str) -> String {
         dash = class(Nav::Dashboard),
         global = class(Nav::Global),
         raw = class(Nav::Raw),
+        users_nav = users_nav,
         reload = reload,
         conf = conf,
         version = escape(view.version),
@@ -152,6 +167,11 @@ pub fn flash_message(code: &str) -> Option<(&'static str, &'static str)> {
         "deleted_share" => Some(("ok", "共享已删除。")),
         "saved_raw" => Some(("ok", "配置文件已保存。")),
         "reloaded" => Some(("ok", "Samba 已重新加载最新配置。")),
+        "user_created" => Some(("ok", "Samba 用户已创建。")),
+        "user_deleted" => Some(("ok", "Samba 用户已删除。")),
+        "password_changed" => Some(("ok", "Samba 密码已更新。")),
+        "user_enabled" => Some(("ok", "Samba 用户已启用。")),
+        "user_disabled" => Some(("ok", "Samba 用户已禁用。")),
         _ => None,
     }
 }
@@ -177,6 +197,14 @@ pub fn text_input(name: &str, value: &str, placeholder: &str) -> String {
          autocomplete=\"off\" spellcheck=\"false\">",
         escape(name),
         escape(value),
+        escape(placeholder)
+    )
+}
+
+pub fn password_input(name: &str, placeholder: &str) -> String {
+    format!(
+        "<input type=\"password\" name=\"{}\" placeholder=\"{}\" autocomplete=\"new-password\" spellcheck=\"false\">",
+        escape(name),
         escape(placeholder)
     )
 }

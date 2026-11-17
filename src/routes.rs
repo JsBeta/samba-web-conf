@@ -141,7 +141,44 @@ fn post(app: &App, parts: &[&str], form: &[(String, String)]) -> Response {
         ["shares", name] => save_share(app, name, form),
         ["shares", name, "delete"] => delete_share(app, name, form),
         ["raw"] => save_raw(app, form),
+        ["reload"] => reload_samba(app),
         _ => pages::not_found(&app.view()),
+    }
+}
+
+fn reload_samba(app: &App) -> Response {
+    let _guard = app.lock_saves();
+
+    if let Err(detail) = app.store.validator.validate(&app.store.conf) {
+        util::warn(format!("手动重载前配置校验失败: {detail}"));
+        return pages::error_page(
+            &app.view(),
+            status_code::BAD_REQUEST,
+            "配置校验未通过",
+            "未执行重载，Samba 仍在使用旧配置。请修正配置后重试。",
+            Some(&detail),
+        );
+    }
+
+    match app.store.reload.reload() {
+        None => pages::error_page(
+            &app.view(),
+            status_code::BAD_REQUEST,
+            "未配置重载命令",
+            "当前以 --no-reload 运行，或 --reload 为空。请先配置重载命令。",
+            None,
+        ),
+        Some(outcome) if outcome.success() => {
+            util::info("已手动重载 Samba 配置");
+            Response::redirect("/?msg=reloaded")
+        }
+        Some(outcome) => {
+            util::warn(format!("手动重载失败: {}", outcome.summary()));
+            Response::html(
+                status_code::INTERNAL_SERVER_ERROR,
+                pages::reload_manual_failure_page(&app.view(), &outcome),
+            )
+        }
     }
 }
 

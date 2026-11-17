@@ -431,6 +431,31 @@ fn allow_origin_option_accepts_mismatched_host() {
 }
 
 #[test]
+fn manual_reload_without_command_reports_error() {
+    let dir = TempDir::new("reload");
+    let conf = dir.path().join("smb.conf");
+    std::fs::write(&conf, "[global]\n   workgroup = WORKGROUP\n").unwrap();
+    let mut options = options(&conf, &dir.path().join("backups"));
+    options.user = None;
+    options.password = None;
+    options.reload_cmd = None;
+    let app = App::new(options).unwrap();
+    let (address, _handle) = start(app);
+
+    let response = get(address, "/global", false);
+    let (csrf, _rev) = csrf_and_rev(&response.body);
+
+    let response = post(address, "/reload", "no-csrf", false, None);
+    assert_eq!(response.status, 403);
+    assert!(response.body.contains("CSRF"));
+
+    let body = form(&[("_csrf", &csrf)]);
+    let response = post(address, "/reload", &body, false, None);
+    assert_eq!(response.status, 400);
+    assert!(response.body.contains("未配置重载命令"));
+}
+
+#[test]
 fn null_origin_falls_back_to_csrf() {
     let dir = TempDir::new("null-origin");
     let conf = dir.path().join("smb.conf");

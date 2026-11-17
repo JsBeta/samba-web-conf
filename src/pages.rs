@@ -790,6 +790,32 @@ pub fn reload_failure_page(view: &View, info: &CommitInfo, outcome: &RunOutcome)
     html::page(view, Nav::None, "重载失败", &body)
 }
 
+pub fn reload_manual_failure_page(view: &View, outcome: &RunOutcome) -> String {
+    let mut body = String::new();
+    body.push_str("<h1>重载失败</h1>");
+    body.push_str(&html::banner(
+        "err",
+        "Samba 重新加载失败，配置文件没有被修改。正在运行的 Samba 可能仍在使用旧配置。",
+    ));
+    body.push_str("<div class=\"card\"><h2>执行结果</h2>");
+    body.push_str(&format!(
+        "<p>状态：<span class=\"mono\">{}</span></p>",
+        html::escape(&outcome.summary())
+    ));
+    body.push_str(&html::detail_block("命令输出", &outcome.output));
+    body.push_str("</div>");
+
+    body.push_str(
+        "<div class=\"card\"><h2>下一步</h2><ul>\
+         <li>在服务器上执行 <code>sudo testparm -s</code> 检查配置。</li>\
+         <li>手动重载：<code>sudo smbcontrol all reload-config</code>。</li>\
+         <li>如果仍失败，检查 Samba 服务状态和重载命令配置。</li>\
+         </ul></div>",
+    );
+    body.push_str("<div class=\"actions\"><a class=\"btn\" href=\"/\">返回概览</a></div>");
+    html::page(view, Nav::None, "重载失败", &body)
+}
+
 pub fn error_page(
     view: &View,
     status: u16,
@@ -885,13 +911,16 @@ mod tests {
             "/etc/samba/backups",
             2,
             &warnings,
-        );
+        )
+        .with_csrf("token-abc");
         let doc = Doc::parse("[global]\n   workgroup = W\n\n[<script>]\n   path = /x\n");
         let html = dashboard(&view, &doc, 42, None);
         assert!(html.contains("&lt;script&gt;"));
         assert!(!html.contains("[<script>]"));
         assert!(html.contains('W'));
         assert!(html.contains("smbcontrol all reload-config"));
+        assert!(html.contains("action=\"/reload\""));
+        assert!(html.contains("token-abc"));
     }
 
     #[test]

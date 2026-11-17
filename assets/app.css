@@ -88,6 +88,9 @@ code, .mono, pre { font-family: var(--mono); }
 
 .spacer { flex: 1; }
 
+.header-form { margin: 0; display: flex; }
+.header-form .btn { white-space: nowrap; }
+
 .pill {
   display: inline-block;
   padding: 2px 9px;

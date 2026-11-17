@@ -20,6 +20,7 @@ pub struct View<'a> {
     pub backup_count: usize,
     pub warnings: &'a [String],
     pub version: &'a str,
+    pub csrf: &'a str,
 }
 
 impl<'a> View<'a> {
@@ -44,7 +45,13 @@ impl<'a> View<'a> {
             backup_count,
             warnings,
             version: VERSION,
+            csrf: "",
         }
+    }
+
+    pub fn with_csrf(mut self, csrf: &'a str) -> View<'a> {
+        self.csrf = csrf;
+        self
     }
 }
 
@@ -76,6 +83,17 @@ pub fn page(view: &View, active: Nav, title: &str, body: &str) -> String {
     } else {
         ""
     };
+    let reload = if view.csrf.is_empty() || view.read_only {
+        String::new()
+    } else {
+        format!(
+            "<form class=\"header-form\" method=\"post\" action=\"/reload\" \
+             data-confirm=\"确定让 Samba 重新加载当前配置吗？\">\
+             {csrf}<button type=\"submit\" class=\"btn small\">重载 Samba</button>\
+             </form>",
+            csrf = hidden("_csrf", view.csrf)
+        )
+    };
     let conf = escape(view.conf);
     format!(
         "<!doctype html>\n\
@@ -96,6 +114,7 @@ pub fn page(view: &View, active: Nav, title: &str, body: &str) -> String {
     <a href=\"/raw\"{raw}>原始编辑</a>\n\
   </nav>\n\
   <span class=\"spacer\"></span>\n\
+  {reload}\n\
   <span class=\"pill mono\" title=\"{conf}\">{conf}</span>\n\
   {read_only}\n\
 </header>\n\
@@ -110,6 +129,7 @@ pub fn page(view: &View, active: Nav, title: &str, body: &str) -> String {
         dash = class(Nav::Dashboard),
         global = class(Nav::Global),
         raw = class(Nav::Raw),
+        reload = reload,
         conf = conf,
         version = escape(view.version),
         backup_count = view.backup_count,
@@ -131,7 +151,7 @@ pub fn flash_message(code: &str) -> Option<(&'static str, &'static str)> {
         "created_share" => Some(("ok", "共享已创建。")),
         "deleted_share" => Some(("ok", "共享已删除。")),
         "saved_raw" => Some(("ok", "配置文件已保存。")),
-        "reloaded" => Some(("ok", "配置已保存并重载。")),
+        "reloaded" => Some(("ok", "Samba 已重新加载最新配置。")),
         _ => None,
     }
 }

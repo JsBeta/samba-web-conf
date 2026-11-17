@@ -6,7 +6,7 @@
 - 修改时保留注释、空行、参数顺序、缩进、大小写、CRLF/BOM。
 - 写盘前校验（`testparm`）、写盘时原子替换、写盘后自动备份并可自动重载 Samba。
 - 默认只监听 `127.0.0.1`，内置 HTTP Basic 认证、CSRF 防护、Origin 校验和严格 CSP。
-- 提供中文界面：概览、全局设置、共享编辑、新建/删除共享、原始文件编辑。
+- 提供中文界面：概览、全局设置、共享编辑、新建/删除共享、原始文件编辑、一键重载 Samba。
 
 > 页面使用明文 HTTP。远程使用时请通过 SSH 隧道或带 TLS 的反向代理访问，不要直接把端口暴露到公网。
 
@@ -44,10 +44,10 @@ sudo ./target/release/samba-ui --conf /etc/samba/smb.conf
 最短路径（发布包已构建好的情况）：
 
 ```sh
-scp dist/samba-ui-0.1.2-armv7.zip root@nas:/tmp/
+scp dist/samba-ui-0.1.3-armv7.zip root@nas:/tmp/
 ssh root@nas
 cd /tmp
-unzip samba-ui-0.1.2-armv7.zip -d samba-ui
+unzip samba-ui-0.1.3-armv7.zip -d samba-ui
 cd samba-ui
 sh deploy/install.sh ./samba-ui-armv7-musl
 vi /etc/samba/samba-ui.env      # 设置 SAMBA_UI_USER / SAMBA_UI_PASSWORD
@@ -127,10 +127,10 @@ sudo ./samba-ui --allow-origin http://nas:8080
 把发布包传到设备并解压：
 
 ```sh
-scp dist/samba-ui-0.1.2-armv7.zip root@nas:/tmp/
+scp dist/samba-ui-0.1.3-armv7.zip root@nas:/tmp/
 ssh root@nas
 cd /tmp
-unzip samba-ui-0.1.2-armv7.zip -d samba-ui
+unzip samba-ui-0.1.3-armv7.zip -d samba-ui
 cd samba-ui
 sh deploy/install.sh ./samba-ui-armv7-musl
 ```
@@ -192,7 +192,7 @@ sudo ./samba-ui-armv7-musl --conf /etc/samba/smb.conf --port 8080
 看到类似日志就成功了：
 
 ```text
-samba-ui v0.1.2 已启动: http://127.0.0.1:8080/
+samba-ui v0.1.3 已启动: http://127.0.0.1:8080/
 配置文件: /etc/samba/smb.conf
 语法校验: testparm；保存后重载: smbcontrol all reload-config
 ```
@@ -327,6 +327,16 @@ sha256sum -c SHA256SUMS
 - 存在多个 `[global]` 段
 - 第一个配置段之前存在参数行
 
+### 手动重载 Samba
+
+页面右上角有“重载 Samba”按钮：
+
+- 先对当前 `smb.conf` 执行 `testparm` 校验；
+- 校验通过后执行启动时配置的重载命令（默认 `smbcontrol all reload-config`）；
+- **不会修改配置文件**，适合手动改过配置、或保存后自动重载失败时重试；
+- 成功会回到概览并提示；失败会显示退出码和命令输出；
+- `--no-reload` 时会提示未配置重载命令，`--read-only` 模式下按钮隐藏。
+
 ### 全局设置
 
 - “常用参数”是表单：工作组、`security`、协议版本、日志、字符集等。
@@ -434,15 +444,15 @@ cargo test
 cargo build --release
 ```
 
-测试包括 52 个库单元测试和 5 个端到端 HTTP 流程测试（真实监听随机端口、Basic 认证、CSRF、创建/编辑/删除共享、原始编辑、revision 冲突、只读模式、反向代理 Host、`allow-origin`、`Origin: null` 回退）。
+测试包括 52 个库单元测试和 6 个端到端 HTTP 流程测试（真实监听随机端口、Basic 认证、CSRF、创建/编辑/删除共享、原始编辑、revision 冲突、只读模式、反向代理 Host、`allow-origin`、`Origin: null` 回退、手动重载）。
 
 ### 发布新版本
 
 版本号以 `Cargo.toml` 为准。修改版本并提交后，打 tag 推送即可自动发布：
 
 ```sh
-git tag v0.1.2
-git push origin v0.1.2
+git tag v0.1.3
+git push origin v0.1.3
 ```
 
 [.github/workflows/release.yml](.github/workflows/release.yml) 会：
@@ -480,7 +490,7 @@ tests/         端到端 HTTP 测试
 
 ## 发布包内容
 
-`dist/samba-ui-0.1.2-armv7.zip` 解压后包含：
+`dist/samba-ui-0.1.3-armv7.zip` 解压后包含：
 
 ```
 samba-ui-armv7-musl      静态链接二进制（推荐）
@@ -509,7 +519,7 @@ examples/smb.conf
 | 现象 | 处理 |
 | --- | --- |
 | 浏览器弹登录框，输密码仍 401 | 检查 `/etc/samba/samba-ui.env` 的 `SAMBA_UI_USER/PASSWORD`，改完 `systemctl restart samba-ui` |
-| POST 返回 403 | 页面过期导致 CSRF 失效，刷新重试；若提示 Origin/Host 不匹配，按错误页列出的地址修正反向代理，或配置 `--allow-origin`；显示 `Origin: null` 时升级到 0.1.2 |
+| POST 返回 403 | 页面过期导致 CSRF 失效，刷新重试；若提示 Origin/Host 不匹配，按错误页列出的地址修正反向代理，或配置 `--allow-origin`；显示 `Origin: null` 时升级到 0.1.2 或更高版本 |
 | 返回 409 | 文件被其他程序改过，刷新页面后重新编辑 |
 | “语法校验未通过” | 看页面里的 `testparm` 输出，修正后重存；原文件没有被改 |
 | “重载失败” | 文件已保存；检查 `smbcontrol` 是否在 PATH、smbd 是否运行，或手动 `smbcontrol all reload-config` |
@@ -548,7 +558,7 @@ smbcontrol all reload-config
 
    `$host` 会丢掉端口，是这类 403 最常见的原因。
 
-2. Caddy/Traefik 通常会自动发送 `X-Forwarded-Host`，升级到 0.1.2 后无需额外配置。
+2. Caddy/Traefik 通常会自动发送 `X-Forwarded-Host`，升级到 0.1.2 或更高版本后无需额外配置。
 
 3. 代理无法保留 Host 时，显式放行浏览器地址：
 

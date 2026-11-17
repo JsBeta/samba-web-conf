@@ -126,6 +126,7 @@ impl App {
             self.store.backup_count(),
             &self.warnings,
         )
+        .with_csrf(&self.csrf)
     }
 
     pub fn lock_saves(&self) -> MutexGuard<'_, ()> {

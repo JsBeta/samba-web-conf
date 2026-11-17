@@ -3,9 +3,9 @@
 use crate::conf::Doc;
 use crate::html::{self, Nav, View};
 use crate::http::{status_code, url_encode, Response};
-use crate::store::CommitInfo;
+use crate::store::{BackupEntry, CommitInfo};
 use crate::users::{Candidate, SambaUser};
-use crate::util::RunOutcome;
+use crate::util::{self, RunOutcome};
 
 pub struct Field {
     pub key: &'static str,
@@ -708,6 +708,88 @@ pub fn new_share_page(
     html::page(view, Nav::Global, "新建共享", &body)
 }
 
+pub fn backups_page(
+    view: &View,
+    csrf: &str,
+    backups: &[BackupEntry],
+    rev: &str,
+    flash_code: Option<&str>,
+    error: Option<&str>,
+    error_detail: Option<&str>,
+) -> String {
+    let mut body = String::new();
+    body.push_str("<h1>配置备份</h1>");
+    body.push_str(&html::flash(flash_code));
+    if let Some(error) = error {
+        body.push_str(&html::banner("err", error));
+    }
+    if let Some(detail) = error_detail {
+        body.push_str(&html::detail_block("校验输出", detail));
+    }
+    if view.read_only {
+        body.push_str(&html::banner("warn", "只读模式：不能回退配置。"));
+    }
+
+    body.push_str("<div class=\"card\"><h2>备份目录</h2>");
+    body.push_str(&format!(
+        "<p class=\"mono\">{}</p><p class=\"muted\">共 {} 份备份。回退前会先用当前配置创建一份新备份，\
+         然后校验并原子替换 smb.conf。</p></div>",
+        html::escape(view.backup_dir),
+        backups.len()
+    ));
+
+    body.push_str("<div class=\"card\"><h2>可用备份</h2>");
+    if backups.is_empty() {
+        body.push_str(
+            "<p class=\"muted\">还没有备份。每次保存配置成功后会在备份目录生成一份带时间戳的副本。</p>",
+        );
+    } else {
+        body.push_str(
+            "<div class=\"table-wrap\"><table><thead><tr>\
+               <th>备份文件</th><th>修改时间（UTC）</th><th>大小</th><th>操作</th>\
+             </tr></thead><tbody>",
+        );
+        for backup in backups {
+            let time = if backup.modified == 0 {
+                "-".to_string()
+            } else {
+                util::utc_string(backup.modified)
+            };
+            let action = if view.read_only {
+                String::new()
+            } else {
+                format!(
+                    "<form method=\"post\" action=\"/backups/restore\" \
+                     data-confirm=\"确定回退到备份 {name} 吗？当前配置会先自动备份。\">\
+                     {csrf}{rev}{name_field}\
+                     <button type=\"submit\" class=\"btn small\">回退到此版本</button>\
+                     </form>",
+                    name = html::escape(&backup.name),
+                    csrf = html::csrf_field(csrf),
+                    rev = html::hidden("_rev", rev),
+                    name_field = html::hidden("name", &backup.name),
+                )
+            };
+            body.push_str(&format!(
+                "<tr>\
+                   <td class=\"mono\">{name}</td>\
+                   <td class=\"mono\">{time}</td>\
+                   <td>{size} 字节</td>\
+                   <td>{action}</td>\
+                 </tr>",
+                name = html::escape(&backup.name),
+                time = html::escape(&time),
+                size = backup.size,
+                action = action,
+            ));
+        }
+        body.push_str("</tbody></table></div>");
+    }
+    body.push_str("</div>");
+
+    html::page(view, Nav::Backups, "配置备份", &body)
+}
+
 pub fn users_page(
     view: &View,
     csrf: &str,
@@ -1257,6 +1339,31 @@ mod tests {
         assert!(page.contains("action=\"/users/admin/password\""));
         assert!(page.contains("action=\"/users/admin/toggle\""));
         assert!(page.contains("action=\"/users/admin/delete\""));
+    }
+
+    #[test]
+    fn backups_page_lists_restore_form() {
+        let (conf, validator, warnings) = view();
+        let view = View::new(
+            &conf,
+            false,
+            false,
+            &validator,
+            "smbcontrol all reload-config",
+            "/backups",
+            2,
+            &warnings,
+        )
+        .with_csrf("token");
+        let backups = vec![BackupEntry {
+            name: "smb.conf.20261117-032559-000.bak".to_string(),
+            size: 128,
+            modified: 1_700_000_000,
+        }];
+        let page = backups_page(&view, "token", &backups, "1-2", None, None, None);
+        assert!(page.contains("action=\"/backups/restore\""));
+        assert!(page.contains("name=\"name\" value=\"smb.conf.20261117-032559-000.bak\""));
+        assert!(page.contains("回退到此版本"));
     }
 
     #[test]

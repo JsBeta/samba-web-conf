@@ -85,6 +85,13 @@ pub struct CommitInfo {
     pub warnings: Option<String>,
 }
 
+#[derive(Clone, Debug)]
+pub struct BackupEntry {
+    pub name: String,
+    pub size: u64,
+    pub modified: u64,
+}
+
 #[derive(Debug)]
 pub enum CommitError {
     Conflict,
@@ -185,14 +192,91 @@ impl Store {
         })
     }
 
+    pub fn backups(&self) -> Result<Vec<BackupEntry>, String> {
+        let Some(prefix) = self.backup_prefix() else {
+            return Ok(Vec::new());
+        };
+        let entries = match fs::read_dir(&self.backup_dir) {
+            Ok(entries) => entries,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(err) => {
+                return Err(format!(
+                    "无法读取备份目录 {}: {err}",
+                    self.backup_dir.display()
+                ))
+            }
+        };
+
+        let mut backups = Vec::new();
+        for entry in entries.flatten() {
+            let Ok(name) = entry.file_name().into_string() else {
+                continue;
+            };
+            if !name.starts_with(&prefix) || !name.ends_with(".bak") {
+                continue;
+            }
+            let Ok(meta) = entry.metadata() else {
+                continue;
+            };
+            let modified = meta
+                .modified()
+                .ok()
+                .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+                .map(|duration| duration.as_secs())
+                .unwrap_or(0);
+            backups.push(BackupEntry {
+                name,
+                size: meta.len(),
+                modified,
+            });
+        }
+        backups.sort_by(|left, right| right.name.cmp(&left.name));
+        Ok(backups)
+    }
+
+    pub fn restore(
+        &self,
+        backup_name: &str,
+        expected_rev: &str,
+    ) -> Result<CommitInfo, CommitError> {
+        let Some(prefix) = self.backup_prefix() else {
+            return Err(CommitError::Io("配置文件没有可用的文件名".to_string()));
+        };
+        if backup_name.is_empty()
+            || backup_name.contains('/')
+            || backup_name.contains('\\')
+            || !backup_name.starts_with(&prefix)
+            || !backup_name.ends_with(".bak")
+        {
+            return Err(CommitError::Io("非法的备份文件名".to_string()));
+        }
+
+        let path = self.backup_dir.join(backup_name);
+        let bytes = fs::read(&path)
+            .map_err(|err| CommitError::Io(format!("无法读取备份 {}: {err}", path.display())))?;
+        let text = String::from_utf8(bytes)
+            .map_err(|_| CommitError::Io("备份文件不是有效的 UTF-8".to_string()))?;
+        self.commit_text(&text, expected_rev)
+    }
+
+    fn backup_prefix(&self) -> Option<String> {
+        self.conf
+            .file_name()
+            .and_then(|name| name.to_str())
+            .map(|name| format!("{name}."))
+    }
+
     pub fn commit(&self, doc: &Doc, expected_rev: &str) -> Result<CommitInfo, CommitError> {
+        self.commit_text(&doc.render(), expected_rev)
+    }
+
+    pub fn commit_text(&self, text: &str, expected_rev: &str) -> Result<CommitInfo, CommitError> {
         let meta = fs::metadata(&self.conf)
             .map_err(|err| CommitError::Io(format!("无法读取配置文件属性: {err}")))?;
         if revision(&meta) != expected_rev {
             return Err(CommitError::Conflict);
         }
 
-        let text = doc.render();
         let parent = self.conf.parent().unwrap_or_else(|| Path::new("."));
         let file_name = self
             .conf
@@ -200,7 +284,7 @@ impl Store {
             .and_then(|name| name.to_str())
             .unwrap_or("smb.conf");
         let temp =
-            write_temp(parent, file_name, &text, unix_mode(&meta)).map_err(CommitError::Io)?;
+            write_temp(parent, file_name, text, unix_mode(&meta)).map_err(CommitError::Io)?;
 
         let warnings = match self.validator.validate(&temp) {
             Ok(warnings) => warnings,
@@ -516,6 +600,47 @@ mod tests {
 
         let loaded = store.load().unwrap();
         assert_eq!(loaded.doc.get("global", "workgroup").as_deref(), Some("B"));
+    }
+
+    #[test]
+    fn lists_and_restores_backups() {
+        let dir = TempDir::new("restore");
+        write_sample(&dir);
+        let store = store(&dir);
+        let loaded = store.load().unwrap();
+        let original = fs::read_to_string(dir.path.join("smb.conf")).unwrap();
+
+        let mut doc = loaded.doc.clone();
+        doc.apply_edits(
+            "global",
+            &[crate::conf::Edit::Set {
+                key: "workgroup".to_string(),
+                value: "B".to_string(),
+            }],
+        )
+        .unwrap();
+        store.commit(&doc, &loaded.rev).unwrap();
+
+        let backups = store.backups().unwrap();
+        assert_eq!(backups.len(), 1);
+        assert!(backups[0].name.starts_with("smb.conf."));
+        assert!(backups[0].name.ends_with(".bak"));
+        assert!(backups[0].size > 0);
+
+        let loaded = store.load().unwrap();
+        let info = store.restore(&backups[0].name, &loaded.rev).unwrap();
+        assert!(info.backup.is_some());
+        assert_eq!(
+            fs::read_to_string(dir.path.join("smb.conf")).unwrap(),
+            original
+        );
+        assert_eq!(store.backups().unwrap().len(), 2);
+
+        let loaded = store.load().unwrap();
+        assert!(matches!(
+            store.restore("../smb.conf", &loaded.rev),
+            Err(CommitError::Io(_))
+        ));
     }
 
     #[test]

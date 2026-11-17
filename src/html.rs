@@ -6,6 +6,7 @@ use crate::VERSION;
 pub enum Nav {
     Dashboard,
     Global,
+    Backups,
     Users,
     Raw,
     None,
@@ -124,6 +125,7 @@ pub fn page(view: &View, active: Nav, title: &str, body: &str) -> String {
   <nav>\n\
     <a href=\"/\"{dash}>概览</a>\n\
     <a href=\"/global\"{global}>全局设置</a>\n\
+    <a href=\"/backups\"{backups}>配置备份</a>\n\
     <a href=\"/raw\"{raw}>原始编辑</a>\n\
     {users_nav}\n\
   </nav>\n\
@@ -142,6 +144,7 @@ pub fn page(view: &View, active: Nav, title: &str, body: &str) -> String {
         title = escape(title),
         dash = class(Nav::Dashboard),
         global = class(Nav::Global),
+        backups = class(Nav::Backups),
         raw = class(Nav::Raw),
         users_nav = users_nav,
         reload = reload,
@@ -167,6 +170,7 @@ pub fn flash_message(code: &str) -> Option<(&'static str, &'static str)> {
         "deleted_share" => Some(("ok", "共享已删除。")),
         "saved_raw" => Some(("ok", "配置文件已保存。")),
         "reloaded" => Some(("ok", "Samba 已重新加载最新配置。")),
+        "backup_restored" => Some(("ok", "配置已回退到所选备份。")),
         "user_created" => Some(("ok", "Samba 用户已创建。")),
         "user_deleted" => Some(("ok", "Samba 用户已删除。")),
         "password_changed" => Some(("ok", "Samba 密码已更新。")),

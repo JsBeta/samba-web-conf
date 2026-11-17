@@ -119,6 +119,30 @@ fn get(app: &App, request: &Request, parts: &[&str]) -> Response {
         },
         ["users"] => users_response(app, flash(request), None, None),
         ["users", name] => user_response(app, name, flash(request), None, None),
+        ["backups"] => match load(app) {
+            Ok(loaded) => match app.store.backups() {
+                Ok(backups) => Response::html(
+                    status_code::OK,
+                    pages::backups_page(
+                        &view,
+                        &app.csrf,
+                        &backups,
+                        &loaded.rev,
+                        flash(request),
+                        None,
+                        None,
+                    ),
+                ),
+                Err(message) => pages::error_page(
+                    &view,
+                    status_code::INTERNAL_SERVER_ERROR,
+                    "读取备份失败",
+                    &message,
+                    None,
+                ),
+            },
+            Err(response) => response,
+        },
         ["raw"] => match load(app) {
             Ok(loaded) => Response::html(
                 status_code::OK,
@@ -148,6 +172,7 @@ fn post(app: &App, parts: &[&str], form: &[(String, String)]) -> Response {
         ["users", name, "password"] => change_samba_password(app, name, form),
         ["users", name, "delete"] => delete_samba_user(app, name),
         ["users", name, "toggle"] => toggle_samba_user(app, name, form),
+        ["backups", "restore"] => restore_backup(app, form),
         ["raw"] => save_raw(app, form),
         ["reload"] => reload_samba(app),
         _ => pages::not_found(&app.view()),
@@ -569,6 +594,75 @@ fn toggle_samba_user(app: &App, name: &str, form: &[(String, String)]) -> Respon
             "user_disabled"
         }
     ))
+}
+
+fn restore_backup(app: &App, form: &[(String, String)]) -> Response {
+    let view = app.view();
+    let Some(rev) = form_value(form, "_rev") else {
+        return pages::bad_request(&view, "缺少版本标记，请刷新页面后重试。");
+    };
+    let Some(name) = form_value(form, "name") else {
+        return pages::bad_request(&view, "请选择要回退的备份。");
+    };
+
+    let _guard = app.lock_saves();
+    let backups = match app.store.backups() {
+        Ok(backups) => backups,
+        Err(message) => {
+            return pages::error_page(
+                &view,
+                status_code::INTERNAL_SERVER_ERROR,
+                "读取备份失败",
+                &message,
+                None,
+            )
+        }
+    };
+    if !backups.iter().any(|backup| backup.name == name) {
+        return pages::bad_request(&view, "备份文件不存在，请刷新页面后重试。");
+    }
+
+    match app.store.restore(name, rev) {
+        Ok(info) => after_commit(app, &info, "/backups?msg=backup_restored"),
+        Err(CommitError::Validate(detail)) => match app.store.load() {
+            Ok(loaded) => match app.store.backups() {
+                Ok(backups) => Response::html(
+                    status_code::BAD_REQUEST,
+                    pages::backups_page(
+                        &app.view(),
+                        &app.csrf,
+                        &backups,
+                        &loaded.rev,
+                        None,
+                        Some("备份配置未通过语法校验，当前配置未修改。"),
+                        Some(&detail),
+                    ),
+                ),
+                Err(message) => pages::error_page(
+                    &app.view(),
+                    status_code::INTERNAL_SERVER_ERROR,
+                    "读取备份失败",
+                    &message,
+                    None,
+                ),
+            },
+            Err(message) => pages::error_page(
+                &app.view(),
+                status_code::INTERNAL_SERVER_ERROR,
+                "读取配置文件失败",
+                &message,
+                None,
+            ),
+        },
+        Err(CommitError::Conflict) => pages::conflict(&app.view()),
+        Err(CommitError::Io(message)) => pages::error_page(
+            &app.view(),
+            status_code::INTERNAL_SERVER_ERROR,
+            "回退失败",
+            &message,
+            None,
+        ),
+    }
 }
 
 fn save_global(app: &App, form: &[(String, String)]) -> Response {

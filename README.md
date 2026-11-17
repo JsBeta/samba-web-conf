@@ -6,7 +6,7 @@
 - 修改时保留注释、空行、参数顺序、缩进、大小写、CRLF/BOM。
 - 写盘前校验（`testparm`）、写盘时原子替换、写盘后自动备份并可自动重载 Samba。
 - 默认只监听 `127.0.0.1`，内置 HTTP Basic 认证、CSRF 防护、Origin 校验和严格 CSP。
-- 提供中文界面：概览、全局设置、共享编辑、新建/删除共享、Samba 用户管理、原始文件编辑、一键重载 Samba。
+- 提供中文界面：概览、全局设置、共享编辑、新建/删除共享、Samba 用户管理、配置备份回退、原始文件编辑、一键重载 Samba。
 
 > 页面使用明文 HTTP。远程使用时请通过 SSH 隧道或带 TLS 的反向代理访问，不要直接把端口暴露到公网。
 
@@ -44,10 +44,10 @@ sudo ./target/release/samba-ui --conf /etc/samba/smb.conf
 最短路径（发布包已构建好的情况）：
 
 ```sh
-scp dist/samba-ui-0.1.5-armv7.zip root@nas:/tmp/
+scp dist/samba-ui-0.1.6-armv7.zip root@nas:/tmp/
 ssh root@nas
 cd /tmp
-unzip samba-ui-0.1.5-armv7.zip -d samba-ui
+unzip samba-ui-0.1.6-armv7.zip -d samba-ui
 cd samba-ui
 sh deploy/install.sh ./samba-ui-armv7-musl
 vi /etc/samba/samba-ui.env      # 设置 SAMBA_UI_USER / SAMBA_UI_PASSWORD
@@ -127,10 +127,10 @@ sudo ./samba-ui --allow-origin http://nas:8080
 把发布包传到设备并解压：
 
 ```sh
-scp dist/samba-ui-0.1.5-armv7.zip root@nas:/tmp/
+scp dist/samba-ui-0.1.6-armv7.zip root@nas:/tmp/
 ssh root@nas
 cd /tmp
-unzip samba-ui-0.1.5-armv7.zip -d samba-ui
+unzip samba-ui-0.1.6-armv7.zip -d samba-ui
 cd samba-ui
 sh deploy/install.sh ./samba-ui-armv7-musl
 ```
@@ -192,7 +192,7 @@ sudo ./samba-ui-armv7-musl --conf /etc/samba/smb.conf --port 8080
 看到类似日志就成功了：
 
 ```text
-samba-ui v0.1.5 已启动: http://127.0.0.1:8080/
+samba-ui v0.1.6 已启动: http://127.0.0.1:8080/
 配置文件: /etc/samba/smb.conf
 语法校验: testparm；保存后重载: smbcontrol all reload-config
 ```
@@ -352,6 +352,23 @@ sha256sum -c SHA256SUMS
 
 > 密码会通过当前 HTTP 连接发送。只在本机、SSH 隧道或 TLS 反向代理下使用，不要在不可信网络中创建或修改密码。
 
+### 配置备份与回退
+
+页头的“配置备份”列出当前 `smb.conf` 的备份：
+
+- 每次成功保存配置前都会生成一份带时间戳的备份，默认保留最近 10 份（`--backups` 可调）。
+- 列表显示备份文件名、修改时间（UTC）和大小。
+- 选择某个备份点“回退到此版本”后，服务会：
+  1. 校验当前 revision，避免覆盖这段时间内的外部修改；
+  2. 对所选备份执行 `testparm`，失败则不改动当前文件；
+  3. 先用当前配置生成一份新备份；
+  4. 原子替换 `smb.conf`；
+  5. 执行重载命令。
+- 回退本身也会产生新备份，所以回退错了还能再选回退前的那一份。
+- 只读模式下可以查看备份列表，但不能回退。
+
+备份文件默认在 `<smb.conf 所在目录>/samba-ui-backups/`。如果使用 systemd 且把 `--backup-dir` 改到其他目录，需要把该目录加入 unit 的 `ReadWritePaths`。
+
 ### 全局设置
 
 - “常用参数”是表单：工作组、`security`、协议版本、日志、字符集等。
@@ -460,15 +477,15 @@ cargo test
 cargo build --release
 ```
 
-测试包括 58 个库单元测试和 6 个端到端 HTTP 流程测试（真实监听随机端口、Basic 认证、CSRF、创建/编辑/删除共享、原始编辑、revision 冲突、只读模式、反向代理 Host、`allow-origin`、`Origin: null` 回退、手动重载、用户列表解析）。
+测试包括 60 个库单元测试和 7 个端到端 HTTP 流程测试（真实监听随机端口、Basic 认证、CSRF、创建/编辑/删除共享、原始编辑、revision 冲突、只读模式、反向代理 Host、`allow-origin`、`Origin: null` 回退、手动重载、用户列表解析、备份回退）。
 
 ### 发布新版本
 
 版本号以 `Cargo.toml` 为准。修改版本并提交后，打 tag 推送即可自动发布：
 
 ```sh
-git tag v0.1.5
-git push origin v0.1.5
+git tag v0.1.6
+git push origin v0.1.6
 ```
 
 [.github/workflows/release.yml](.github/workflows/release.yml) 会：
@@ -495,7 +512,7 @@ src/
   pages.rs     各页面 HTML
   html.rs      页面骨架与表单控件
   conf.rs      smb.conf AST、最小差分编辑
-  store.rs     加载/校验/备份/原子写入/重载
+  store.rs     加载/校验/备份/回退/原子写入/重载
   http.rs      手写 HTTP/1.1 解析与响应
   util.rs      日志、时间、编码、子进程、常量时间比较
 assets/        内嵌的 CSS/JS
@@ -507,7 +524,7 @@ tests/         端到端 HTTP 测试
 
 ## 发布包内容
 
-`dist/samba-ui-0.1.5-armv7.zip` 解压后包含：
+`dist/samba-ui-0.1.6-armv7.zip` 解压后包含：
 
 ```
 samba-ui-armv7-musl      静态链接二进制（推荐）
@@ -530,6 +547,7 @@ examples/smb.conf
 - 常用字段留空会删除参数；要写空值请使用“其他参数/新增参数”。
 - 依赖 `testparm` 与 `smbcontrol` 才能做校验和自动重载；没有它们时请加 `--no-testparm --no-reload`。
 - 用户管理依赖 `pdbedit` 和 `smbpasswd`，需要 root；只管理 Samba 账户，不创建/删除 Linux 用户。
+- 配置回退只还原 `smb.conf`，不还原用户数据库或其他 Samba 状态；备份数量受 `--backups` 限制。
 - 删除共享、修改共享名等操作没有回收站，只有保存前的备份。
 
 ## 常见问题
@@ -548,6 +566,8 @@ examples/smb.conf
 | 用户管理不可用 | 安装 `samba-common-bin`，确认 `pdbedit`、`smbpasswd` 在 PATH，重启 samba-ui |
 | 创建用户提示 Linux 用户不存在 | 先 `sudo adduser 用户名`，再回页面刷新 |
 | 改密后 Windows 仍用旧密码 | 断开旧连接或清理 Windows 凭据后重连；Samba 密码已立即更新 |
+| 配置备份列表为空 | 备份只在成功保存后生成；检查 `--backup-dir` 和 `--backups` 是否被设为 0 |
+| 回退后想撤销 | 回到“配置备份”，选择回退操作自动生成的那份安全备份 |
 | 忘记密码 | 修改 `/etc/samba/samba-ui.env` 后 `systemctl restart samba-ui` |
 
 **启动报“无法打开配置文件”**

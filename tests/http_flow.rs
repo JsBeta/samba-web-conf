@@ -431,6 +431,48 @@ fn allow_origin_option_accepts_mismatched_host() {
 }
 
 #[test]
+fn backup_restore_flow() {
+    let dir = TempDir::new("backup");
+    let conf = dir.path().join("smb.conf");
+    std::fs::write(&conf, "[global]\n   workgroup = WORKGROUP\n").unwrap();
+    let mut options = options(&conf, &dir.path().join("backups"));
+    options.user = None;
+    options.password = None;
+    let app = App::new(options).unwrap();
+    let (address, _handle) = start(app);
+
+    let response = get(address, "/global", false);
+    let (csrf, rev) = csrf_and_rev(&response.body);
+    let body = form(&[("_csrf", &csrf), ("_rev", &rev), ("c.0", "FIRST")]);
+    let response = post(address, "/global", &body, false, None);
+    assert_eq!(response.status, 303);
+
+    let response = get(address, "/global", false);
+    let (csrf, rev) = csrf_and_rev(&response.body);
+    let body = form(&[("_csrf", &csrf), ("_rev", &rev), ("c.0", "SECOND")]);
+    let response = post(address, "/global", &body, false, None);
+    assert_eq!(response.status, 303);
+    assert!(std::fs::read_to_string(&conf)
+        .unwrap()
+        .contains("workgroup = SECOND"));
+
+    let response = get(address, "/backups", false);
+    assert_eq!(response.status, 200);
+    let backup = hidden_field(&response.body, "name");
+    let (csrf, rev) = csrf_and_rev(&response.body);
+    let body = form(&[("_csrf", &csrf), ("_rev", &rev), ("name", &backup)]);
+    let response = post(address, "/backups/restore", &body, false, None);
+    assert_eq!(response.status, 303);
+    assert_eq!(
+        response.header("Location"),
+        Some("/backups?msg=backup_restored")
+    );
+    assert!(std::fs::read_to_string(&conf)
+        .unwrap()
+        .contains("workgroup = FIRST"));
+}
+
+#[test]
 fn manual_reload_without_command_reports_error() {
     let dir = TempDir::new("reload");
     let conf = dir.path().join("smb.conf");

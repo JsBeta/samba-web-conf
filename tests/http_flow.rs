@@ -459,6 +459,12 @@ fn backup_restore_flow() {
     let response = get(address, "/backups", false);
     assert_eq!(response.status, 200);
     let backup = hidden_field(&response.body, "name");
+    let response = get(address, &format!("/backups/{}", url_encode(&backup)), false);
+    assert_eq!(response.status, 200);
+    assert!(response.body.contains("备份预览"));
+    assert!(response.body.contains("workgroup = FIRST"));
+
+    let response = get(address, "/backups", false);
     let (csrf, rev) = csrf_and_rev(&response.body);
     let body = form(&[("_csrf", &csrf), ("_rev", &rev), ("name", &backup)]);
     let response = post(address, "/backups/restore", &body, false, None);

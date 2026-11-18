@@ -143,6 +143,7 @@ fn get(app: &App, request: &Request, parts: &[&str]) -> Response {
             },
             Err(response) => response,
         },
+        ["backups", name] => backup_preview(app, name),
         ["raw"] => match load(app) {
             Ok(loaded) => Response::html(
                 status_code::OK,
@@ -594,6 +595,46 @@ fn toggle_samba_user(app: &App, name: &str, form: &[(String, String)]) -> Respon
             "user_disabled"
         }
     ))
+}
+
+fn backup_preview(app: &App, name: &str) -> Response {
+    let view = app.view();
+    let backups = match app.store.backups() {
+        Ok(backups) => backups,
+        Err(message) => {
+            return pages::error_page(
+                &view,
+                status_code::INTERNAL_SERVER_ERROR,
+                "读取备份失败",
+                &message,
+                None,
+            )
+        }
+    };
+    let Some(backup) = backups.iter().find(|backup| backup.name == name) else {
+        return pages::not_found(&view);
+    };
+    let loaded = match load(app) {
+        Ok(loaded) => loaded,
+        Err(response) => return response,
+    };
+    let content = match app.store.read_backup(name) {
+        Ok(content) => content,
+        Err(message) => {
+            return pages::error_page(
+                &view,
+                status_code::INTERNAL_SERVER_ERROR,
+                "读取备份内容失败",
+                &message,
+                None,
+            )
+        }
+    };
+
+    Response::html(
+        status_code::OK,
+        pages::backup_page(&view, &app.csrf, backup, &content, &loaded.rev),
+    )
 }
 
 fn restore_backup(app: &App, form: &[(String, String)]) -> Response {

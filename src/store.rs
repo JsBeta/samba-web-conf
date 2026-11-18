@@ -234,13 +234,25 @@ impl Store {
         Ok(backups)
     }
 
+    pub fn read_backup(&self, backup_name: &str) -> Result<String, String> {
+        let path = self.backup_path(backup_name)?;
+        let bytes =
+            fs::read(&path).map_err(|err| format!("无法读取备份 {}: {err}", path.display()))?;
+        String::from_utf8(bytes).map_err(|_| "备份文件不是有效的 UTF-8".to_string())
+    }
+
     pub fn restore(
         &self,
         backup_name: &str,
         expected_rev: &str,
     ) -> Result<CommitInfo, CommitError> {
+        let text = self.read_backup(backup_name).map_err(CommitError::Io)?;
+        self.commit_text(&text, expected_rev)
+    }
+
+    fn backup_path(&self, backup_name: &str) -> Result<PathBuf, String> {
         let Some(prefix) = self.backup_prefix() else {
-            return Err(CommitError::Io("配置文件没有可用的文件名".to_string()));
+            return Err("配置文件没有可用的文件名".to_string());
         };
         if backup_name.is_empty()
             || backup_name.contains('/')
@@ -248,15 +260,9 @@ impl Store {
             || !backup_name.starts_with(&prefix)
             || !backup_name.ends_with(".bak")
         {
-            return Err(CommitError::Io("非法的备份文件名".to_string()));
+            return Err("非法的备份文件名".to_string());
         }
-
-        let path = self.backup_dir.join(backup_name);
-        let bytes = fs::read(&path)
-            .map_err(|err| CommitError::Io(format!("无法读取备份 {}: {err}", path.display())))?;
-        let text = String::from_utf8(bytes)
-            .map_err(|_| CommitError::Io("备份文件不是有效的 UTF-8".to_string()))?;
-        self.commit_text(&text, expected_rev)
+        Ok(self.backup_dir.join(backup_name))
     }
 
     fn backup_prefix(&self) -> Option<String> {
@@ -626,6 +632,7 @@ mod tests {
         assert!(backups[0].name.starts_with("smb.conf."));
         assert!(backups[0].name.ends_with(".bak"));
         assert!(backups[0].size > 0);
+        assert_eq!(store.read_backup(&backups[0].name).unwrap(), original);
 
         let loaded = store.load().unwrap();
         let info = store.restore(&backups[0].name, &loaded.rev).unwrap();

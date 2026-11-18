@@ -44,10 +44,10 @@ sudo ./target/release/samba-ui --conf /etc/samba/smb.conf
 最短路径（发布包已构建好的情况）：
 
 ```sh
-scp dist/samba-ui-0.1.7-armhf.zip root@nas:/tmp/
+scp dist/samba-ui-0.1.8-armhf.zip root@nas:/tmp/
 ssh root@nas
 cd /tmp
-unzip samba-ui-0.1.7-armhf.zip -d samba-ui
+unzip samba-ui-0.1.8-armhf.zip -d samba-ui
 cd samba-ui
 sh deploy/install.sh ./samba-ui-armv7-musl
 vi /etc/samba/samba-ui.env      # 设置 SAMBA_UI_USER / SAMBA_UI_PASSWORD
@@ -132,10 +132,10 @@ ARMv6 只提供 musl 静态版，不需要 Pro/raspi-toolchain，也不需要 AR
 把发布包传到设备并解压：
 
 ```sh
-scp dist/samba-ui-0.1.7-armhf.zip root@nas:/tmp/
+scp dist/samba-ui-0.1.8-armhf.zip root@nas:/tmp/
 ssh root@nas
 cd /tmp
-unzip samba-ui-0.1.7-armhf.zip -d samba-ui
+unzip samba-ui-0.1.8-armhf.zip -d samba-ui
 cd samba-ui
 sh deploy/install.sh ./samba-ui-armv6-musl
 ```
@@ -199,7 +199,7 @@ sudo ./samba-ui-armv7-musl --conf /etc/samba/smb.conf --port 8080
 看到类似日志就成功了：
 
 ```text
-samba-ui v0.1.7 已启动: http://127.0.0.1:8080/
+samba-ui v0.1.8 已启动: http://127.0.0.1:8080/
 配置文件: /etc/samba/smb.conf
 语法校验: testparm；保存后重载: smbcontrol all reload-config
 ```
@@ -385,6 +385,7 @@ sha256sum -c SHA256SUMS
 
 - 每次成功保存配置前都会生成一份带时间戳的备份，默认保留最近 10 份（`--backups` 可调）。
 - 列表显示备份文件名、修改时间（UTC）和大小。
+- 每个备份都有“预览”按钮，可以在只读页面查看完整文件内容、行数和大小，确认后再回退。
 - 选择某个备份点“回退到此版本”后，服务会：
   1. 校验当前 revision，避免覆盖这段时间内的外部修改；
   2. 对所选备份执行 `testparm`，失败则不改动当前文件；
@@ -504,15 +505,15 @@ cargo test
 cargo build --release
 ```
 
-测试包括 60 个库单元测试和 7 个端到端 HTTP 流程测试（真实监听随机端口、Basic 认证、CSRF、创建/编辑/删除共享、原始编辑、revision 冲突、只读模式、反向代理 Host、`allow-origin`、`Origin: null` 回退、手动重载、用户列表解析、备份回退）。
+测试包括 61 个库单元测试和 7 个端到端 HTTP 流程测试（真实监听随机端口、Basic 认证、CSRF、创建/编辑/删除共享、原始编辑、revision 冲突、只读模式、反向代理 Host、`allow-origin`、`Origin: null` 回退、手动重载、用户列表解析、备份预览与回退）。
 
 ### 发布新版本
 
 版本号以 `Cargo.toml` 为准。修改版本并提交后，打 tag 推送即可自动发布：
 
 ```sh
-git tag v0.1.7
-git push origin v0.1.7
+git tag v0.1.8
+git push origin v0.1.8
 ```
 
 [.github/workflows/release.yml](.github/workflows/release.yml) 会：
@@ -551,7 +552,7 @@ tests/         端到端 HTTP 测试
 
 ## 发布包内容
 
-`dist/samba-ui-0.1.7-armhf.zip` 解压后包含：
+`dist/samba-ui-0.1.8-armhf.zip` 解压后包含：
 
 ```
 samba-ui-armv6-musl      ARMv6 静态链接二进制（Pi Zero / Pi 1）

@@ -207,6 +207,10 @@ th.key { width: 34%; }
 td.center, th.center { text-align: center; }
 td.mono { word-break: break-all; }
 
+.row-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.row-actions form { margin: 0; }
+.backup-preview { max-height: 520px; }
+
 .params td:first-child { width: 34%; }
 .params input[type="text"] { min-width: 180px; }
 .params input[type="checkbox"] { width: 18px; height: 18px; }

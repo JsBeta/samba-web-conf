@@ -755,10 +755,12 @@ pub fn backups_page(
             } else {
                 util::utc_string(backup.modified)
             };
-            let action = if view.read_only {
-                String::new()
-            } else {
-                format!(
+            let mut action = format!(
+                "<div class=\"row-actions\"><a class=\"btn small\" href=\"/backups/{}\">预览</a>",
+                url_encode(&backup.name)
+            );
+            if !view.read_only {
+                action.push_str(&format!(
                     "<form method=\"post\" action=\"/backups/restore\" \
                      data-confirm=\"确定回退到备份 {name} 吗？当前配置会先自动备份。\">\
                      {csrf}{rev}{name_field}\
@@ -768,8 +770,9 @@ pub fn backups_page(
                     csrf = html::csrf_field(csrf),
                     rev = html::hidden("_rev", rev),
                     name_field = html::hidden("name", &backup.name),
-                )
-            };
+                ));
+            }
+            action.push_str("</div>");
             body.push_str(&format!(
                 "<tr>\
                    <td class=\"mono\">{name}</td>\
@@ -788,6 +791,76 @@ pub fn backups_page(
     body.push_str("</div>");
 
     html::page(view, Nav::Backups, "配置备份", &body)
+}
+
+pub fn backup_page(
+    view: &View,
+    csrf: &str,
+    backup: &BackupEntry,
+    content: &str,
+    rev: &str,
+) -> String {
+    let mut body = String::new();
+    body.push_str(&format!(
+        "<h1>备份预览 <span class=\"pill mono\">{}</span></h1>",
+        html::escape(&backup.name)
+    ));
+    body.push_str(&html::banner(
+        "warn",
+        "这里只是预览备份内容，不会修改当前配置。确认无误后再点击回退。",
+    ));
+    if view.read_only {
+        body.push_str(&html::banner("warn", "只读模式：不能回退配置。"));
+    }
+
+    body.push_str("<div class=\"card\"><h2>备份信息</h2><div class=\"table-wrap\"><table><tbody>");
+    body.push_str(&format!(
+        "<tr><th class=\"key\">备份文件</th><td class=\"mono\">{}</td></tr>",
+        html::escape(&backup.name)
+    ));
+    body.push_str(&format!(
+        "<tr><th class=\"key\">修改时间（UTC）</th><td class=\"mono\">{}</td></tr>",
+        if backup.modified == 0 {
+            "-".to_string()
+        } else {
+            html::escape(&util::utc_string(backup.modified))
+        }
+    ));
+    body.push_str(&format!(
+        "<tr><th class=\"key\">大小</th><td>{} 字节</td></tr>",
+        backup.size
+    ));
+    body.push_str(&format!(
+        "<tr><th class=\"key\">行数</th><td>{} 行</td></tr>",
+        content.lines().count()
+    ));
+    body.push_str("</tbody></table></div></div>");
+
+    body.push_str("<div class=\"card\"><h2>文件内容</h2>");
+    body.push_str(&format!(
+        "<pre class=\"detail backup-preview\">{}</pre>",
+        html::escape(content)
+    ));
+    body.push_str("</div>");
+
+    body.push_str("<div class=\"actions\">");
+    if !view.read_only {
+        body.push_str(&format!(
+            "<form method=\"post\" action=\"/backups/restore\" \
+             data-confirm=\"确定回退到备份 {name} 吗？当前配置会先自动备份。\">\
+             {csrf}{rev}{name_field}\
+             <button type=\"submit\" class=\"btn primary\">回退到此版本</button>\
+             </form>",
+            name = html::escape(&backup.name),
+            csrf = html::csrf_field(csrf),
+            rev = html::hidden("_rev", rev),
+            name_field = html::hidden("name", &backup.name),
+        ));
+    }
+    body.push_str(&html::link_button("/backups", "返回备份列表"));
+    body.push_str("</div>");
+
+    html::page(view, Nav::Backups, "备份预览", &body)
 }
 
 pub fn users_page(
@@ -878,7 +951,8 @@ pub fn users_page(
     } else if candidates.is_empty() {
         body.push_str(
             "<p class=\"muted\">没有可用的 Linux 用户。Samba 用户必须对应一个已存在的 Linux 用户，\
-             请先执行 <code>sudo adduser 用户名</code>，再刷新本页。</p>",
+             请先执行 <code>sudo useradd -M -s /usr/sbin/nologin 用户名</code>，再刷新本页。\
+             <span> -M 不创建主目录，nologin 禁止登录 shell；Samba 文件访问不依赖登录 shell。</span></p>",
         );
     } else {
         body.push_str(
@@ -1364,6 +1438,38 @@ mod tests {
         assert!(page.contains("action=\"/backups/restore\""));
         assert!(page.contains("name=\"name\" value=\"smb.conf.20261117-032559-000.bak\""));
         assert!(page.contains("回退到此版本"));
+        assert!(page.contains("预览"));
+    }
+
+    #[test]
+    fn backup_page_escapes_content() {
+        let (conf, validator, warnings) = view();
+        let view = View::new(
+            &conf,
+            false,
+            false,
+            &validator,
+            "smbcontrol all reload-config",
+            "/backups",
+            1,
+            &warnings,
+        )
+        .with_csrf("token");
+        let backup = BackupEntry {
+            name: "smb.conf.20261117-032559-000.bak".to_string(),
+            size: 32,
+            modified: 1_700_000_000,
+        };
+        let page = backup_page(
+            &view,
+            "token",
+            &backup,
+            "[global]\n   comment = <script>\n",
+            "1-2",
+        );
+        assert!(page.contains("&lt;script&gt;"));
+        assert!(page.contains("回退到此版本"));
+        assert!(page.contains("action=\"/backups/restore\""));
     }
 
     #[test]

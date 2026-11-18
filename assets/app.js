@@ -29,4 +29,37 @@
       }
     }
   });
+  function localizeTimes() {
+    var nodes = document.querySelectorAll("time[data-local-time]");
+    var zone = "";
+    try {
+      zone = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+    } catch (error) {
+      zone = "";
+    }
+    for (var index = 0; index < nodes.length; index += 1) {
+      var element = nodes[index];
+      var iso = element.getAttribute("datetime");
+      var date = new Date(iso);
+      if (isNaN(date.getTime())) {
+        continue;
+      }
+      element.textContent = date.toLocaleString(undefined, {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false
+      });
+      element.title = "UTC: " + iso + (zone ? " / " + zone : "");
+    }
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", localizeTimes);
+  } else {
+    localizeTimes();
+  }
 })();

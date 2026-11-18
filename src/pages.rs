@@ -708,6 +708,19 @@ pub fn new_share_page(
     html::page(view, Nav::Global, "新建共享", &body)
 }
 
+fn backup_time(modified: u64) -> String {
+    if modified == 0 {
+        return "-".to_string();
+    }
+    let iso = util::utc_string(modified);
+    let fallback = format!("{} UTC", iso.replace('T', " ").trim_end_matches('Z'));
+    format!(
+        "<time datetime=\"{}\" data-local-time>{}</time>",
+        html::escape(&iso),
+        html::escape(&fallback)
+    )
+}
+
 pub fn backups_page(
     view: &View,
     csrf: &str,
@@ -746,15 +759,11 @@ pub fn backups_page(
     } else {
         body.push_str(
             "<div class=\"table-wrap\"><table><thead><tr>\
-               <th>备份文件</th><th>修改时间（UTC）</th><th>大小</th><th>操作</th>\
+               <th>备份文件</th><th>修改时间</th><th>大小</th><th>操作</th>\
              </tr></thead><tbody>",
         );
         for backup in backups {
-            let time = if backup.modified == 0 {
-                "-".to_string()
-            } else {
-                util::utc_string(backup.modified)
-            };
+            let time = backup_time(backup.modified);
             let mut action = format!(
                 "<div class=\"row-actions\"><a class=\"btn small\" href=\"/backups/{}\">预览</a>",
                 url_encode(&backup.name)
@@ -781,7 +790,7 @@ pub fn backups_page(
                    <td>{action}</td>\
                  </tr>",
                 name = html::escape(&backup.name),
-                time = html::escape(&time),
+                time = time,
                 size = backup.size,
                 action = action,
             ));
@@ -819,12 +828,8 @@ pub fn backup_page(
         html::escape(&backup.name)
     ));
     body.push_str(&format!(
-        "<tr><th class=\"key\">修改时间（UTC）</th><td class=\"mono\">{}</td></tr>",
-        if backup.modified == 0 {
-            "-".to_string()
-        } else {
-            html::escape(&util::utc_string(backup.modified))
-        }
+        "<tr><th class=\"key\">修改时间</th><td class=\"mono\">{}</td></tr>",
+        backup_time(backup.modified)
     ));
     body.push_str(&format!(
         "<tr><th class=\"key\">大小</th><td>{} 字节</td></tr>",
@@ -951,8 +956,8 @@ pub fn users_page(
     } else if candidates.is_empty() {
         body.push_str(
             "<p class=\"muted\">没有可用的 Linux 用户。Samba 用户必须对应一个已存在的 Linux 用户，\
-             请先执行 <code>sudo useradd -M -s /usr/sbin/nologin 用户名</code>，再刷新本页。\
-             <span> -M 不创建主目录，nologin 禁止登录 shell；Samba 文件访问不依赖登录 shell。</span></p>",
+             请先执行 <code>sudo useradd -M -s /usr/sbin/nologin 用户名</code>，再刷新本页。<br>\
+             <code> -M 不创建主目录，nologin 禁止登录 shell；Samba 文件访问不依赖登录 shell。</code></p>",
         );
     } else {
         body.push_str(
@@ -1439,6 +1444,8 @@ mod tests {
         assert!(page.contains("name=\"name\" value=\"smb.conf.20261117-032559-000.bak\""));
         assert!(page.contains("回退到此版本"));
         assert!(page.contains("预览"));
+        assert!(page.contains("data-local-time"));
+        assert!(page.contains(" UTC</time>"));
     }
 
     #[test]

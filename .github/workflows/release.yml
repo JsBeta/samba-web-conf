@@ -51,9 +51,49 @@ jobs:
           path: dist/${{ matrix.asset }}
           if-no-files-found: error
 
+  build-armv6:
+    name: Build samba-ui-armv6-musl
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: arm-unknown-linux-musleabihf
+
+      - name: Build static ARMv6
+        run: |
+          set -euo pipefail
+          HOST="$(rustc -vV | sed -n 's/^host: //p')"
+          LLD="$(rustc --print sysroot)/lib/rustlib/${HOST}/bin/rust-lld"
+          if [ ! -x "$LLD" ]; then
+            sudo apt-get update
+            sudo apt-get install -y lld
+            LLD="$(command -v ld.lld)"
+          fi
+          echo "Using linker: $LLD"
+
+          CARGO_TARGET_ARM_UNKNOWN_LINUX_MUSLEABIHF_LINKER="$LLD" \
+          CARGO_TARGET_ARM_UNKNOWN_LINUX_MUSLEABIHF_RUSTFLAGS="-C link-arg=--threads=1" \
+            cargo build --locked --release --target arm-unknown-linux-musleabihf
+
+          mkdir -p dist
+          cp target/arm-unknown-linux-musleabihf/release/samba-ui dist/samba-ui-armv6-musl
+          chmod 0755 dist/samba-ui-armv6-musl
+          file dist/samba-ui-armv6-musl
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: samba-ui-armv6-musl
+          path: dist/samba-ui-armv6-musl
+          if-no-files-found: error
+
   release:
     name: Publish GitHub Release
-    needs: build
+    needs: [build, build-armv6]
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
@@ -84,6 +124,7 @@ jobs:
 
           rm -rf pkg
           mkdir -p pkg/deploy pkg/examples
+          cp dist/samba-ui-armv6-musl pkg/
           cp dist/samba-ui-armv7-musl pkg/
           cp dist/samba-ui-armv7-glibc pkg/
           cp README.md pkg/
@@ -92,13 +133,13 @@ jobs:
 
           (
             cd pkg
-            sha256sum samba-ui-armv7-musl samba-ui-armv7-glibc README.md > SHA256SUMS
-            zip -9 -r "../dist/samba-ui-${VERSION}-armv7.zip" .
+            sha256sum samba-ui-armv6-musl samba-ui-armv7-musl samba-ui-armv7-glibc README.md > SHA256SUMS
+            zip -9 -r "../dist/samba-ui-${VERSION}-armhf.zip" .
           )
 
           (
             cd dist
-            sha256sum samba-ui-armv7-musl samba-ui-armv7-glibc "samba-ui-${VERSION}-armv7.zip" > SHA256SUMS
+            sha256sum samba-ui-armv6-musl samba-ui-armv7-musl samba-ui-armv7-glibc "samba-ui-${VERSION}-armhf.zip" > SHA256SUMS
           )
 
           ls -l dist

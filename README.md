@@ -1,6 +1,6 @@
 # samba-ui
 
-一个用 Rust 写的、**零第三方依赖**的 Samba `smb.conf` 可视化管理页面。单个二进制、内嵌前端资源，可直接跑在 ARMv7（树莓派、ARM NAS、老路由器）上。
+一个用 Rust 写的、**零第三方依赖**的 Samba `smb.conf` 可视化管理页面。单个二进制、内嵌前端资源，可直接跑在 ARMv6/ARMv7（树莓派 Zero、Pi 1、ARM NAS、老路由器）上。
 
 - 只依赖 Rust 标准库：没有 Web 框架、没有模板引擎、没有数据库、没有前端构建链。
 - 修改时保留注释、空行、参数顺序、缩进、大小写、CRLF/BOM。
@@ -39,15 +39,15 @@ sudo ./target/release/samba-ui --conf /etc/samba/smb.conf
 
 默认监听 `127.0.0.1:8080`。修改 `/etc/samba/smb.conf` 通常需要 root；如果配置在别的位置，用 `--conf /path/to/smb.conf`。
 
-### 部署到 ARMv7 设备
+### 部署到 ARMv6 / ARMv7 设备
 
 最短路径（发布包已构建好的情况）：
 
 ```sh
-scp dist/samba-ui-0.1.6-armv7.zip root@nas:/tmp/
+scp dist/samba-ui-0.1.7-armhf.zip root@nas:/tmp/
 ssh root@nas
 cd /tmp
-unzip samba-ui-0.1.6-armv7.zip -d samba-ui
+unzip samba-ui-0.1.7-armhf.zip -d samba-ui
 cd samba-ui
 sh deploy/install.sh ./samba-ui-armv7-musl
 vi /etc/samba/samba-ui.env      # 设置 SAMBA_UI_USER / SAMBA_UI_PASSWORD
@@ -109,31 +109,38 @@ sudo ./samba-ui --port 8081
 sudo ./samba-ui --allow-origin http://nas:8080
 ```
 
-## 部署到 ARMv7
+## 部署到 ARMv6 / ARMv7
 
 ### 选择二进制
 
-构建脚本会在 `dist/` 生成两个产物：
+构建脚本会在 `dist/` 生成以下产物：
 
 | 文件 | 说明 | 运行要求 |
 | --- | --- | --- |
-| `dist/samba-ui-armv7-musl` | 静态链接，推荐 | 任意 ARMv7 硬浮点 Linux |
-| `dist/samba-ui-armv7-glibc` | 动态链接 | GitHub Release 产物需 glibc ≥ 2.18；本地构建取决于工具链（Windows 脚本实测 ≥ 2.34），且需要 `libgcc_s.so.1` |
+| `dist/samba-ui-armv6-musl` | ARMv6 静态链接，推荐给 Pi Zero / Pi 1 | 任意 ARMv6 硬浮点 Linux，无 glibc 依赖 |
+| `dist/samba-ui-armv7-musl` | ARMv7 静态链接，推荐 | 任意 ARMv7 硬浮点 Linux |
+| `dist/samba-ui-armv7-glibc` | ARMv7 动态链接 | GitHub Release 产物需 glibc ≥ 2.18；本地构建取决于工具链（Windows 脚本实测 ≥ 2.34），且需要 `libgcc_s.so.1` |
 
-两者都是 EABI5、hard-float、ELF32、ARM 架构。不确定设备 glibc 版本时，直接用 musl 版本。Release 中的 glibc 二进制由 CI 的 `cross` 构建，兼容性通常比本地工具链产物更好。
+三者都是 EABI5、hard-float、ELF32、ARM 架构。不确定设备架构或 glibc 版本时，优先用 musl 静态版。Release 中的 glibc 二进制由 CI 的 `cross` 构建，兼容性通常比本地工具链产物更好。
+
+ARMv6 只提供 musl 静态版，不需要 Pro/raspi-toolchain，也不需要 ARMv6 glibc。树莓派 Zero、Pi 1 请使用 `samba-ui-armv6-musl`；ARMv7 设备用 `samba-ui-armv7-musl`。ARMv7 二进制不能在 Pi Zero（ARMv6）上运行，会报 Illegal Instruction。
+
+树莓派 Zero W 是单核 1 GHz、512 MB 内存的 ARM1176JZF-S，跑 Samba + 这个管理页面是可行的；建议只用于管理，不要在 Zero 上终止 TLS，远程访问用 SSH 隧道。
 
 ### 方式 A：发布包一键安装（推荐）
 
 把发布包传到设备并解压：
 
 ```sh
-scp dist/samba-ui-0.1.6-armv7.zip root@nas:/tmp/
+scp dist/samba-ui-0.1.7-armhf.zip root@nas:/tmp/
 ssh root@nas
 cd /tmp
-unzip samba-ui-0.1.6-armv7.zip -d samba-ui
+unzip samba-ui-0.1.7-armhf.zip -d samba-ui
 cd samba-ui
-sh deploy/install.sh ./samba-ui-armv7-musl
+sh deploy/install.sh ./samba-ui-armv6-musl
 ```
+
+如果设备是 ARMv7，把最后一行换成 `./samba-ui-armv7-musl`。
 
 [deploy/install.sh](deploy/install.sh) 会：
 
@@ -192,7 +199,7 @@ sudo ./samba-ui-armv7-musl --conf /etc/samba/smb.conf --port 8080
 看到类似日志就成功了：
 
 ```text
-samba-ui v0.1.6 已启动: http://127.0.0.1:8080/
+samba-ui v0.1.7 已启动: http://127.0.0.1:8080/
 配置文件: /etc/samba/smb.conf
 语法校验: testparm；保存后重载: smbcontrol all reload-config
 ```
@@ -274,7 +281,27 @@ samba-ui --allow-origin http://nas:8080,https://nas.example.com
 
 ### 从源码交叉编译
 
-#### Windows 本机
+#### ARMv6（树莓派 Zero / Pi 1）
+
+Windows 本机：
+
+```powershell
+rustup target add arm-unknown-linux-musleabihf
+.\scripts\build-armv6.ps1
+```
+
+Linux 主机：
+
+```sh
+rustup target add arm-unknown-linux-musleabihf
+./scripts/build-armv6.sh
+```
+
+产物是 `dist/samba-ui-armv6-musl`，静态链接，不需要 Pro/raspi-toolchain 或 ARMv6 glibc。
+
+#### ARMv7
+
+Windows 本机：
 
 需要先安装 Rust 目标和本地 ARM GNU Toolchain（默认路径见脚本）：
 
@@ -291,7 +318,7 @@ rustup target add armv7-unknown-linux-musleabihf armv7-unknown-linux-gnueabihf
 
 脚本会构建两个目标，并把产物复制到 `dist/`，同时打印 SHA256。
 
-#### Linux 主机
+Linux 主机：
 
 ```sh
 rustup target add armv7-unknown-linux-musleabihf armv7-unknown-linux-gnueabihf
@@ -484,16 +511,16 @@ cargo build --release
 版本号以 `Cargo.toml` 为准。修改版本并提交后，打 tag 推送即可自动发布：
 
 ```sh
-git tag v0.1.6
-git push origin v0.1.6
+git tag v0.1.7
+git push origin v0.1.7
 ```
 
 [.github/workflows/release.yml](.github/workflows/release.yml) 会：
 
-- 使用 `cross` 构建 `armv7-unknown-linux-musleabihf` 和 `armv7-unknown-linux-gnueabihf`
+- 使用 `cross` 构建 ARMv7 musl/glibc，使用 `rust-lld` 构建 ARMv6 musl
 - 校验 tag（去掉 `v`）与 `Cargo.toml` 版本一致，不一致直接失败
-- 生成 `samba-ui-<版本>-armv7.zip` 和 `SHA256SUMS`
-- 创建 GitHub Release，上传两个二进制、zip 和校验文件
+- 生成 `samba-ui-<版本>-armhf.zip` 和 `SHA256SUMS`
+- 创建 GitHub Release，上传三个二进制、zip 和校验文件
 
 `dist/` 是本地构建产物，不提交到 Git；Release 中的文件由 CI 生成。
 
@@ -518,17 +545,18 @@ src/
 assets/        内嵌的 CSS/JS
 examples/      示例 smb.conf
 deploy/        systemd unit、环境变量示例、安装脚本
-scripts/       ARMv7 交叉编译脚本
+scripts/       ARMv6 / ARMv7 交叉编译脚本
 tests/         端到端 HTTP 测试
 ```
 
 ## 发布包内容
 
-`dist/samba-ui-0.1.6-armv7.zip` 解压后包含：
+`dist/samba-ui-0.1.7-armhf.zip` 解压后包含：
 
 ```
-samba-ui-armv7-musl      静态链接二进制（推荐）
-samba-ui-armv7-glibc     动态链接二进制
+samba-ui-armv6-musl      ARMv6 静态链接二进制（Pi Zero / Pi 1）
+samba-ui-armv7-musl      ARMv7 静态链接二进制（推荐）
+samba-ui-armv7-glibc     ARMv7 动态链接二进制
 README.md
 SHA256SUMS
 deploy/install.sh

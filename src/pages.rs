@@ -626,7 +626,7 @@ pub fn share_page(
     if !view.read_only {
         body.push_str(&format!(
             "<form class=\"danger-zone\" method=\"post\" action=\"/shares/{encoded}/delete\" \
-             data-confirm=\"确定删除共享 [{name}] 吗？这会立即写入 smb.conf。\">\
+             data-confirm=\"确定删除共享 [{name}] 吗？这会立即写入 smb.conf，并尝试断开当前客户端连接。\">\
              {csrf}{rev}\
              <button type=\"submit\" class=\"btn danger\">删除此共享</button>\
              </form>",

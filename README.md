@@ -44,10 +44,10 @@ sudo ./target/release/samba-ui --conf /etc/samba/smb.conf
 最短路径（发布包已构建好的情况）：
 
 ```sh
-scp dist/samba-ui-0.1.9-armhf.zip root@nas:/tmp/
+scp dist/samba-ui-0.1.10-armhf.zip root@nas:/tmp/
 ssh root@nas
 cd /tmp
-unzip samba-ui-0.1.9-armhf.zip -d samba-ui
+unzip samba-ui-0.1.10-armhf.zip -d samba-ui
 cd samba-ui
 sh deploy/install.sh ./samba-ui-armv7-musl
 vi /etc/samba/samba-ui.env      # 设置 SAMBA_UI_USER / SAMBA_UI_PASSWORD
@@ -132,10 +132,10 @@ ARMv6 只提供 musl 静态版，不需要 Pro/raspi-toolchain，也不需要 AR
 把发布包传到设备并解压：
 
 ```sh
-scp dist/samba-ui-0.1.9-armhf.zip root@nas:/tmp/
+scp dist/samba-ui-0.1.10-armhf.zip root@nas:/tmp/
 ssh root@nas
 cd /tmp
-unzip samba-ui-0.1.9-armhf.zip -d samba-ui
+unzip samba-ui-0.1.10-armhf.zip -d samba-ui
 cd samba-ui
 sh deploy/install.sh ./samba-ui-armv6-musl
 ```
@@ -199,7 +199,7 @@ sudo ./samba-ui-armv7-musl --conf /etc/samba/smb.conf --port 8080
 看到类似日志就成功了：
 
 ```text
-samba-ui v0.1.9 已启动: http://127.0.0.1:8080/
+samba-ui v0.1.10 已启动: http://127.0.0.1:8080/
 配置文件: /etc/samba/smb.conf
 语法校验: testparm；保存后重载: smbcontrol all reload-config
 ```
@@ -425,6 +425,20 @@ sha256sum -c SHA256SUMS
 
 - 删除整个配置段，保留段间空行分隔。
 - 删除前会弹出确认框，确认后立即写入并重载。
+- 重载成功后会自动执行 `smbcontrol smbd close-share <共享名>`，断开该共享上的现有客户端，避免 Windows 继续访问已删除的共享。
+- 如果 `smbcontrol` 不可用或重载未启用，会显示警告；也可以手动执行：
+
+  ```sh
+  sudo smbcontrol smbd close-share Bob
+  ```
+
+  仍未消失时再重启 Samba：
+
+  ```sh
+  sudo systemctl restart smbd nmbd
+  ```
+
+- Windows 端可能还缓存了旧连接，执行 `net use * /delete /y` 后重新打开共享列表。
 
 ### 原始编辑
 
@@ -482,7 +496,7 @@ smbcontrol all reload-config
 - 常用参数用表单编辑；其他参数以“参数名 / 值”表格编辑，可逐行删除或新增。
 - 常用字段留空表示删除该参数；下拉框会保留无法识别的当前值，避免误改。
 - 新参数追加到段末，沿用文件中已有的缩进风格。
-- 删除共享会删除整个段，但保留段间空行分隔。
+- 删除共享会删除整个段，但保留段间空行分隔；重载成功后会尝试 `close-share` 断开客户端。
 - “原始编辑”直接修改整个文件，保存前同样做校验、备份和原子替换。
 - 修改共享名、调整段顺序等高级操作请使用原始编辑。
 
@@ -512,8 +526,8 @@ cargo build --release
 版本号以 `Cargo.toml` 为准。修改版本并提交后，打 tag 推送即可自动发布：
 
 ```sh
-git tag v0.1.9
-git push origin v0.1.9
+git tag v0.1.10
+git push origin v0.1.10
 ```
 
 [.github/workflows/release.yml](.github/workflows/release.yml) 会：
@@ -552,7 +566,7 @@ tests/         端到端 HTTP 测试
 
 ## 发布包内容
 
-`dist/samba-ui-0.1.9-armhf.zip` 解压后包含：
+`dist/samba-ui-0.1.10-armhf.zip` 解压后包含：
 
 ```
 samba-ui-armv6-musl      ARMv6 静态链接二进制（Pi Zero / Pi 1）

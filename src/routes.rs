@@ -933,7 +933,7 @@ fn delete_share(app: &App, name: &str, form: &[(String, String)]) -> Response {
     }
 
     match app.store.commit(&doc, &loaded.rev) {
-        Ok(info) => after_commit(app, &info, "/?msg=deleted_share"),
+        Ok(info) => after_delete(app, &info, &section.name),
         Err(CommitError::Validate(detail)) => pages::error_page(
             &app.view(),
             status_code::BAD_REQUEST,
@@ -1015,6 +1015,50 @@ fn after_commit(app: &App, info: &CommitInfo, location: &str) -> Response {
         }
     }
     Response::redirect(location)
+}
+
+fn after_delete(app: &App, info: &CommitInfo, share_name: &str) -> Response {
+    log_commit(info);
+    match &info.reload {
+        Some(reload) if reload.success() => match close_share_clients(share_name) {
+            Ok(()) => {
+                util::info(format!("已断开共享 {share_name} 的客户端连接"));
+                Response::redirect("/?msg=deleted_share")
+            }
+            Err(message) => {
+                util::warn(format!("共享已删除，但关闭客户端失败: {message}"));
+                Response::redirect("/?msg=deleted_share_no_close")
+            }
+        },
+        Some(reload) => {
+            let page = pages::reload_failure_page(&app.view(), info, reload);
+            Response::html(status_code::INTERNAL_SERVER_ERROR, page)
+        }
+        None => {
+            util::warn("共享已删除，但自动重载未启用，smbd 可能仍提供旧共享");
+            Response::redirect("/?msg=deleted_share_no_close")
+        }
+    }
+}
+
+fn close_share_clients(share_name: &str) -> Result<(), String> {
+    if share_name.is_empty() || share_name.starts_with('-') {
+        return Err("共享名不合法，已跳过 close-share".to_string());
+    }
+    let Some(smbcontrol) = util::find_in_path("smbcontrol") else {
+        return Err("未找到 smbcontrol".to_string());
+    };
+    let outcome = util::run_program(
+        "smbcontrol close-share",
+        &smbcontrol,
+        &["smbd", "close-share", share_name],
+        Duration::from_secs(10),
+    )?;
+    if outcome.success() {
+        Ok(())
+    } else {
+        Err(tool_error("smbcontrol close-share", &outcome))
+    }
 }
 
 fn log_commit(info: &CommitInfo) {

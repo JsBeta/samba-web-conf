@@ -168,6 +168,10 @@ pub fn flash_message(code: &str) -> Option<(&'static str, &'static str)> {
         "saved_share" => Some(("ok", "共享设置已保存。")),
         "created_share" => Some(("ok", "共享已创建。")),
         "deleted_share" => Some(("ok", "共享已删除。")),
+        "deleted_share_no_close" => Some((
+            "warn",
+            "共享已删除，但未能断开现有客户端。配置可能尚未重载，或未找到 smbcontrol；请检查后重启 smbd。",
+        )),
         "saved_raw" => Some(("ok", "配置文件已保存。")),
         "reloaded" => Some(("ok", "Samba 已重新加载最新配置。")),
         "backup_restored" => Some(("ok", "配置已回退到所选备份。")),

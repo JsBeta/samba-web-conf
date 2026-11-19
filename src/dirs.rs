@@ -4,6 +4,12 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 const MAX_CANDIDATES: usize = 100;
+const MAX_BROWSE_ENTRIES: usize = 500;
+
+const FORBIDDEN_DIRS: &[&str] = &[
+    "/bin", "/boot", "/dev", "/etc", "/lib", "/lib32", "/lib64", "/libx32", "/proc", "/root",
+    "/run", "/sbin", "/sys", "/usr", "/var",
+];
 
 const FIXED_DIRS: &[&str] = &[
     "/srv",
@@ -36,20 +42,93 @@ const SKIP_ROOT: &[&str] = &[
 
 /// 返回一组可直接用于 `path` 输入框的目录，最多 100 项。
 pub fn candidates() -> Vec<String> {
-    let mut roots: Vec<PathBuf> = vec![PathBuf::from("/")];
-    let mut fixed = Vec::new();
+    let roots = roots();
+    let mut result = from_roots(&roots);
+    result.extend(roots.iter().map(|path| path.display().to_string()));
+    normalize(result)
+}
 
+/// 可供目录浏览器选择的起始目录。
+pub fn roots() -> Vec<PathBuf> {
+    let mut roots = Vec::new();
     for directory in FIXED_DIRS {
         let path = PathBuf::from(directory);
         if path.is_dir() {
-            fixed.push(directory.to_string());
             roots.push(path);
         }
     }
+    if let Ok(entries) = fs::read_dir("/") {
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if SKIP_ROOT.contains(&name.as_ref()) {
+                continue;
+            }
+            let path = entry.path();
+            if path.is_dir() {
+                roots.push(path);
+            }
+        }
+    }
+    normalize_paths(roots)
+}
 
-    let mut result = from_roots(&roots);
-    result.extend(fixed);
-    normalize(result)
+fn normalize_paths(paths: Vec<PathBuf>) -> Vec<PathBuf> {
+    let strings: Vec<String> = paths
+        .iter()
+        .map(|path| path.display().to_string())
+        .collect();
+    normalize(strings).into_iter().map(PathBuf::from).collect()
+}
+
+/// 规范化并校验一个浏览路径，拒绝系统目录和非目录路径。
+pub fn canonical_browse_path(raw: &str) -> Result<PathBuf, String> {
+    if raw.is_empty() || raw.contains('\0') {
+        return Err("目录路径不能为空".to_string());
+    }
+    let path = PathBuf::from(raw);
+    if !path.is_absolute() {
+        return Err("目录路径必须是绝对路径".to_string());
+    }
+    let canonical =
+        fs::canonicalize(&path).map_err(|err| format!("无法打开目录 {}: {err}", path.display()))?;
+    if !canonical.is_dir() {
+        return Err(format!("{} 不是目录", canonical.display()));
+    }
+    if canonical == Path::new("/") || is_forbidden(&canonical) {
+        return Err("不能浏览系统目录，请直接输入路径".to_string());
+    }
+    Ok(canonical)
+}
+
+pub fn is_forbidden(path: &Path) -> bool {
+    FORBIDDEN_DIRS.iter().any(|prefix| {
+        let prefix = Path::new(prefix);
+        path == prefix || path.starts_with(prefix)
+    })
+}
+
+/// 列出目录的直接子目录，最多 500 项。
+pub fn list_dir(path: &Path) -> Result<Vec<(String, String)>, String> {
+    let entries =
+        fs::read_dir(path).map_err(|err| format!("无法读取目录 {}: {err}", path.display()))?;
+    let mut directories = Vec::new();
+    for entry in entries.flatten() {
+        let child = entry.path();
+        if !child.is_dir() || is_forbidden(&child) {
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name.is_empty() {
+            continue;
+        }
+        directories.push((name, child.display().to_string()));
+        if directories.len() >= MAX_BROWSE_ENTRIES {
+            break;
+        }
+    }
+    directories.sort_by(|left, right| left.0.cmp(&right.0));
+    Ok(directories)
 }
 
 /// 扫描每个根目录的直接子目录。单独拆出来便于测试。

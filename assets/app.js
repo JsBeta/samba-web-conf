@@ -14,6 +14,17 @@
     if (!(target instanceof Element)) {
       return;
     }
+    var browse = target.closest("[data-browse-dir]");
+    if (browse) {
+      var input = document.querySelector(browse.getAttribute("data-dir-target"));
+      if (input) {
+        var value = input.value.trim();
+        if (value) {
+          browse.href = "/browse?path=" + encodeURIComponent(value);
+        }
+      }
+      return;
+    }
     var button = target.closest("[data-add-row]");
     if (!button) {
       return;

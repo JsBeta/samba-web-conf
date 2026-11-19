@@ -99,6 +99,11 @@ fn get(app: &App, request: &Request, parts: &[&str]) -> Response {
         ["shares", "new"] => match load(app) {
             Ok(loaded) => {
                 let directories = dirs::candidates();
+                let initial_path = request
+                    .query
+                    .iter()
+                    .find(|(key, _)| key == "path")
+                    .map(|(_, value)| value.as_str());
                 Response::html(
                     status_code::OK,
                     pages::new_share_page(
@@ -109,6 +114,7 @@ fn get(app: &App, request: &Request, parts: &[&str]) -> Response {
                         None,
                         None,
                         None,
+                        initial_path,
                         &directories,
                     ),
                 )
@@ -158,6 +164,7 @@ fn get(app: &App, request: &Request, parts: &[&str]) -> Response {
             Err(response) => response,
         },
         ["backups", name] => backup_preview(app, name),
+        ["browse"] => browse_dirs(app, request),
         ["raw"] => match load(app) {
             Ok(loaded) => Response::html(
                 status_code::OK,
@@ -611,6 +618,43 @@ fn toggle_samba_user(app: &App, name: &str, form: &[(String, String)]) -> Respon
     ))
 }
 
+fn browse_dirs(app: &App, request: &Request) -> Response {
+    let view = app.view();
+    let roots: Vec<String> = dirs::roots()
+        .iter()
+        .map(|path| path.display().to_string())
+        .collect();
+
+    let Some(raw) = request
+        .query
+        .iter()
+        .find(|(key, _)| key == "path")
+        .map(|(_, value)| value.as_str())
+    else {
+        return Response::html(
+            status_code::OK,
+            pages::browse_page(&view, None, &roots, &[], None),
+        );
+    };
+
+    match dirs::canonical_browse_path(raw) {
+        Ok(path) => match dirs::list_dir(&path) {
+            Ok(entries) => Response::html(
+                status_code::OK,
+                pages::browse_page(&view, Some(&path), &roots, &entries, None),
+            ),
+            Err(message) => Response::html(
+                status_code::BAD_REQUEST,
+                pages::browse_page(&view, Some(&path), &roots, &[], Some(&message)),
+            ),
+        },
+        Err(message) => Response::html(
+            status_code::BAD_REQUEST,
+            pages::browse_page(&view, None, &roots, &[], Some(&message)),
+        ),
+    }
+}
+
 fn backup_preview(app: &App, name: &str) -> Response {
     let view = app.view();
     let backups = match app.store.backups() {
@@ -867,6 +911,7 @@ fn create_share(app: &App, form: &[(String, String)]) -> Response {
                 Some(message),
                 detail,
                 Some(form),
+                None,
                 &directories,
             ),
         )
@@ -933,6 +978,7 @@ fn create_share(app: &App, form: &[(String, String)]) -> Response {
                 Some("Samba 语法校验未通过，文件未修改。请修正后重试。"),
                 Some(&detail),
                 Some(form),
+                None,
                 &directories,
             ),
         ),

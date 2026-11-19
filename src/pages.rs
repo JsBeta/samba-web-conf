@@ -1,5 +1,7 @@
 //! 各个页面的 HTML 渲染。
 
+use std::path::{Component, Path, PathBuf};
+
 use crate::conf::Doc;
 use crate::html::{self, Nav, View};
 use crate::http::{status_code, url_encode, Response};
@@ -663,9 +665,12 @@ fn path_field(field: &Field, name: &str, value: &str, directories: &[String]) ->
     datalist.push_str("</datalist>");
 
     let control = format!(
-        "<input id=\"share-path\" type=\"text\" name=\"{}\" value=\"{}\" \
+        "<div class=\"path-controls\">\
+         <input id=\"share-path\" type=\"text\" name=\"{}\" value=\"{}\" \
          placeholder=\"/srv/samba/share\" list=\"dir-options\" \
-         autocomplete=\"off\" spellcheck=\"false\">{}",
+         autocomplete=\"off\" spellcheck=\"false\">\
+         <a class=\"btn small\" href=\"/browse\" data-browse-dir data-dir-target=\"#share-path\">浏览…</a>\
+         </div>{}",
         html::escape(name),
         html::escape(value),
         picker
@@ -695,6 +700,7 @@ pub fn new_share_page(
     error: Option<&str>,
     error_detail: Option<&str>,
     submitted_form: Option<&[(String, String)]>,
+    initial_path: Option<&str>,
     directories: &[String],
 ) -> String {
     let mut body = String::new();
@@ -728,7 +734,11 @@ pub fn new_share_page(
 
     for (index, field) in NEW_SHARE_FIELDS.iter().enumerate() {
         let name = format!("c.{index}");
-        let value = submitted(submitted_form, &name);
+        let value = if field.key == "path" && submitted_form.is_none() {
+            initial_path.unwrap_or("")
+        } else {
+            submitted(submitted_form, &name)
+        };
         if field.key == "path" {
             body.push_str(&path_field(field, &name, value, directories));
         } else {
@@ -766,6 +776,108 @@ fn backup_time(modified: u64) -> String {
         html::escape(&iso),
         html::escape(&fallback)
     )
+}
+
+pub fn browse_page(
+    view: &View,
+    current: Option<&Path>,
+    roots: &[String],
+    entries: &[(String, String)],
+    error: Option<&str>,
+) -> String {
+    let mut body = String::new();
+    body.push_str("<h1>浏览目录</h1>");
+    if let Some(error) = error {
+        body.push_str(&html::banner("err", error));
+    }
+
+    match current {
+        None => {
+            body.push_str(
+                "<p class=\"muted\">选择一个起始目录，然后逐级进入。也可以回到新建共享页手动输入任意绝对路径。</p>",
+            );
+            body.push_str("<div class=\"card\"><h2>起始目录</h2>");
+            if roots.is_empty() {
+                body.push_str("<p class=\"muted\">没有扫描到可用目录，请直接手动输入路径。</p>");
+            } else {
+                body.push_str("<div class=\"dir-list\">");
+                for root in roots {
+                    body.push_str(&format!(
+                        "<a class=\"dir-item\" href=\"/browse?path={}\">\
+                         <span class=\"dir-arrow\">›</span><span class=\"mono\">{}</span></a>",
+                        url_encode(root),
+                        html::escape(root)
+                    ));
+                }
+                body.push_str("</div>");
+            }
+            body.push_str("</div>");
+            body.push_str(
+                "<div class=\"actions\"><a class=\"btn\" href=\"/shares/new\">返回新建共享</a></div>",
+            );
+        }
+        Some(current) => {
+            let current_display = current.display().to_string();
+            body.push_str("<p class=\"mono\">当前：");
+            body.push_str(&html::escape(&current_display));
+            body.push_str("</p>");
+
+            let mut crumbs = String::from("<a href=\"/browse\">根目录</a>");
+            let mut cumulative = PathBuf::from("/");
+            for component in current.components() {
+                if let Component::Normal(part) = component {
+                    cumulative.push(part);
+                    crumbs.push_str(&format!(
+                        "<span class=\"crumb-sep\">/</span>\
+                         <a href=\"/browse?path={}\">{}</a>",
+                        url_encode(&cumulative.display().to_string()),
+                        html::escape(&part.to_string_lossy())
+                    ));
+                }
+            }
+            body.push_str(&format!("<div class=\"breadcrumb\">{crumbs}</div>"));
+
+            let parent = current.parent().filter(|path| *path != Path::new("/"));
+            let parent_href = match parent {
+                Some(path) => format!("/browse?path={}", url_encode(&path.display().to_string())),
+                None => "/browse".to_string(),
+            };
+
+            body.push_str("<div class=\"actions\">");
+            body.push_str(&format!(
+                "<a class=\"btn\" href=\"{}\">↑ 上级</a>",
+                html::escape(&parent_href)
+            ));
+            body.push_str(&format!(
+                "<a class=\"btn primary\" href=\"/shares/new?path={}\">使用此目录</a>",
+                url_encode(&current_display)
+            ));
+            body.push_str(&html::link_button("/browse", "根目录"));
+            body.push_str("</div>");
+
+            body.push_str(&format!(
+                "<div class=\"card\"><h2>子目录（{}）</h2>",
+                entries.len()
+            ));
+            if entries.is_empty() {
+                body.push_str("<p class=\"muted\">这个目录下没有可浏览的子目录。</p>");
+            } else {
+                body.push_str("<div class=\"dir-list\">");
+                for (name, path) in entries {
+                    body.push_str(&format!(
+                        "<a class=\"dir-item\" href=\"/browse?path={}\">\
+                         <span class=\"dir-arrow\">›</span><span class=\"mono\">{}</span></a>",
+                        url_encode(path),
+                        html::escape(name)
+                    ));
+                }
+                body.push_str("</div>");
+            }
+            body.push_str("</div>");
+        }
+    }
+
+    html::page(view, Nav::None, "浏览目录", &body)
 }
 
 pub fn backups_page(
@@ -1524,6 +1636,29 @@ mod tests {
         assert!(page.contains("&lt;script&gt;"));
         assert!(page.contains("回退到此版本"));
         assert!(page.contains("action=\"/backups/restore\""));
+    }
+
+    #[test]
+    fn browse_page_renders_breadcrumb_and_entries() {
+        let (conf, validator, warnings) = view();
+        let view = View::new(
+            &conf,
+            false,
+            false,
+            &validator,
+            "smbcontrol all reload-config",
+            "/backups",
+            0,
+            &warnings,
+        )
+        .with_csrf("token");
+        let entries = vec![("beta".to_string(), "/srv/beta".to_string())];
+        let roots = vec!["/srv".to_string()];
+        let page = browse_page(&view, Some(Path::new("/srv")), &roots, &entries, None);
+        assert!(page.contains("breadcrumb"));
+        assert!(page.contains("beta"));
+        assert!(page.contains("使用此目录"));
+        assert!(page.contains("上级"));
     }
 
     #[test]

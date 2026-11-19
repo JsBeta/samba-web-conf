@@ -658,7 +658,7 @@ pub fn tree_nodes(entries: &[(String, String)], roots: bool) -> String {
             "<li class=\"tree-node\" data-path=\"{path}\">\
              <div class=\"tree-row\">\
                <button type=\"button\" class=\"tree-toggle\" aria-expanded=\"false\" \
-                 aria-label=\"展开子目录\">▶</button>\
+                 aria-label=\"展开子目录\" title=\"展开或收起\"></button>\
                <button type=\"button\" class=\"tree-select\" title=\"{path}\">{label}</button>\
              </div><ul class=\"tree-children\" hidden></ul></li>",
             path = html::escape(path),
@@ -694,9 +694,9 @@ fn path_field(field: &Field, name: &str, value: &str, directories: &[String]) ->
         html::escape(value)
     );
     let hint = if directories.is_empty() {
-        "没有扫描到常用目录，可以直接输入绝对路径，或点击“浏览…”逐级选择。"
+        "没有扫描到常用目录，可以直接输入绝对路径。"
     } else {
-        "点击输入框右侧箭头选择常用目录，也可以直接输入；或点击“浏览…”逐级浏览。"
+        "点击输入框可以选择默认常用目录也可以直接输入"
     };
 
     format!(

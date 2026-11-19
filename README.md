@@ -44,10 +44,10 @@ sudo ./target/release/samba-ui --conf /etc/samba/smb.conf
 最短路径（发布包已构建好的情况）：
 
 ```sh
-scp dist/samba-ui-0.1.15-armhf.zip root@nas:/tmp/
+scp dist/samba-ui-0.1.19-armhf.zip root@nas:/tmp/
 ssh root@nas
 cd /tmp
-unzip samba-ui-0.1.15-armhf.zip -d samba-ui
+unzip samba-ui-0.1.19-armhf.zip -d samba-ui
 cd samba-ui
 sh deploy/install.sh ./samba-ui-armv7-musl
 vi /etc/samba/samba-ui.env      # 设置 SAMBA_UI_USER / SAMBA_UI_PASSWORD
@@ -132,10 +132,10 @@ ARMv6 只提供 musl 静态版，不需要 Pro/raspi-toolchain，也不需要 AR
 把发布包传到设备并解压：
 
 ```sh
-scp dist/samba-ui-0.1.15-armhf.zip root@nas:/tmp/
+scp dist/samba-ui-0.1.19-armhf.zip root@nas:/tmp/
 ssh root@nas
 cd /tmp
-unzip samba-ui-0.1.15-armhf.zip -d samba-ui
+unzip samba-ui-0.1.19-armhf.zip -d samba-ui
 cd samba-ui
 sh deploy/install.sh ./samba-ui-armv6-musl
 ```
@@ -199,7 +199,7 @@ sudo ./samba-ui-armv7-musl --conf /etc/samba/smb.conf --port 8080
 看到类似日志就成功了：
 
 ```text
-samba-ui v0.1.15 已启动: http://127.0.0.1:8080/
+samba-ui v0.1.19 已启动: http://127.0.0.1:8080/
 配置文件: /etc/samba/smb.conf
 语法校验: testparm；保存后重载: smbcontrol all reload-config
 ```
@@ -530,8 +530,8 @@ cargo build --release
 版本号以 `Cargo.toml` 为准。修改版本并提交后，打 tag 推送即可自动发布：
 
 ```sh
-git tag v0.1.15
-git push origin v0.1.15
+git tag v0.1.19
+git push origin v0.1.19
 ```
 
 [.github/workflows/release.yml](.github/workflows/release.yml) 会：
@@ -571,7 +571,7 @@ tests/         端到端 HTTP 测试
 
 ## 发布包内容
 
-`dist/samba-ui-0.1.15-armhf.zip` 解压后包含：
+`dist/samba-ui-0.1.19-armhf.zip` 解压后包含：
 
 ```
 samba-ui-armv6-musl      ARMv6 静态链接二进制（Pi Zero / Pi 1）

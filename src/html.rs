@@ -260,7 +260,7 @@ pub fn select_input(name: &str, value: &str, options: &[&str], empty_label: &str
         ));
     }
     html.push_str("</select>");
-    html
+    format!("<span class=\"select-wrap\">{html}</span>")
 }
 
 pub fn field(label: &str, control: &str, hint: &str) -> String {

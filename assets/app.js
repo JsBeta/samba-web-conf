@@ -107,11 +107,9 @@
         if (expanded) {
           children.hidden = true;
           toggle.setAttribute("aria-expanded", "false");
-          toggle.textContent = "▶";
         } else {
           children.hidden = false;
           toggle.setAttribute("aria-expanded", "true");
-          toggle.textContent = "▼";
           if (!children.dataset.loaded) {
             children.dataset.loaded = "1";
             load(children, node.getAttribute("data-path"));

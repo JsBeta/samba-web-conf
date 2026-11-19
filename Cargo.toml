@@ -1,6 +1,6 @@
 [package]
 name = "samba-ui"
-version = "0.1.15"
+version = "0.1.19"
 edition = "2021"
 rust-version = "1.70"
 description = "零依赖的极简 Samba smb.conf 可视化管理页面（ARMv7 可用）"

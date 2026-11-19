@@ -167,6 +167,14 @@ pub fn flash_message(code: &str) -> Option<(&'static str, &'static str)> {
         "saved_global" => Some(("ok", "全局设置已保存。")),
         "saved_share" => Some(("ok", "共享设置已保存。")),
         "created_share" => Some(("ok", "共享已创建。")),
+        "created_share_missing_path" => Some((
+            "warn",
+            "共享已创建，但 path 指向的目录不存在或不是目录，Samba 客户端可能无法访问。",
+        )),
+        "saved_share_missing_path" => Some((
+            "warn",
+            "共享已保存，但 path 指向的目录不存在或不是目录，Samba 客户端可能无法访问。",
+        )),
         "deleted_share" => Some(("ok", "共享已删除。")),
         "deleted_share_no_close" => Some((
             "warn",

@@ -268,10 +268,10 @@ fn full_http_flow() {
     ]);
     let response = post(address, "/shares/new", &body, true, None);
     assert_eq!(response.status, 303);
-    assert_eq!(
-        response.header("Location"),
-        Some("/shares/docs?msg=created_share")
-    );
+    assert!(response
+        .header("Location")
+        .unwrap_or("")
+        .starts_with("/shares/docs?msg=created_share"));
     let saved = std::fs::read_to_string(&conf).unwrap();
     assert!(saved.contains("[docs]"));
     assert!(saved.contains("path = /srv/docs"));

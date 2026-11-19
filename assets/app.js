@@ -29,6 +29,26 @@
       }
     }
   });
+  document.addEventListener("change", function (event) {
+    var target = event.target;
+    if (!(target instanceof Element)) {
+      return;
+    }
+    var picker = target.closest("[data-dir-target]");
+    if (!picker) {
+      return;
+    }
+    var value = picker.value;
+    if (!value) {
+      return;
+    }
+    var input = document.querySelector(picker.getAttribute("data-dir-target"));
+    if (input) {
+      input.value = value;
+      input.focus();
+    }
+  });
+
   function localizeTimes() {
     var nodes = document.querySelectorAll("time[data-local-time]");
     var zone = "";

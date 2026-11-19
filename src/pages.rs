@@ -645,6 +645,48 @@ pub fn share_page(
     ))
 }
 
+fn path_field(field: &Field, name: &str, value: &str, directories: &[String]) -> String {
+    let mut picker = String::from(
+        "<select data-dir-target=\"#share-path\" aria-label=\"从常用目录选择\">\
+         <option value=\"\">从常用目录选择…</option>",
+    );
+    let mut datalist = String::from("<datalist id=\"dir-options\">");
+    for directory in directories {
+        let escaped = html::escape(directory);
+        picker.push_str(&format!(
+            "<option value=\"{}\">{}</option>",
+            escaped, escaped
+        ));
+        datalist.push_str(&format!("<option value=\"{}\"></option>", escaped));
+    }
+    picker.push_str("</select>");
+    datalist.push_str("</datalist>");
+
+    let control = format!(
+        "<input id=\"share-path\" type=\"text\" name=\"{}\" value=\"{}\" \
+         placeholder=\"/srv/samba/share\" list=\"dir-options\" \
+         autocomplete=\"off\" spellcheck=\"false\">{}",
+        html::escape(name),
+        html::escape(value),
+        picker
+    );
+    let hint = if directories.is_empty() {
+        "没有扫描到常用目录，可以直接输入绝对路径。"
+    } else {
+        "可从常用目录选择，也可以直接输入绝对路径。目录不存在时会保存并给出提示。"
+    };
+
+    format!(
+        "<div class=\"field\"><label for=\"share-path\"><span class=\"label-text\">{}</span></label>{}\
+         <span class=\"hint\">{}</span>{}</div>",
+        html::escape(field.label),
+        control,
+        html::escape(hint),
+        datalist
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
 pub fn new_share_page(
     view: &View,
     csrf: &str,
@@ -653,6 +695,7 @@ pub fn new_share_page(
     error: Option<&str>,
     error_detail: Option<&str>,
     submitted_form: Option<&[(String, String)]>,
+    directories: &[String],
 ) -> String {
     let mut body = String::new();
     body.push_str("<h1>新建共享</h1>");
@@ -686,11 +729,15 @@ pub fn new_share_page(
     for (index, field) in NEW_SHARE_FIELDS.iter().enumerate() {
         let name = format!("c.{index}");
         let value = submitted(submitted_form, &name);
-        body.push_str(&html::field(
-            field.label,
-            &control(field, &name, value),
-            field.hint,
-        ));
+        if field.key == "path" {
+            body.push_str(&path_field(field, &name, value, directories));
+        } else {
+            body.push_str(&html::field(
+                field.label,
+                &control(field, &name, value),
+                field.hint,
+            ));
+        }
     }
     body.push_str("</div></div>");
 

@@ -1,10 +1,12 @@
 //! 路由与表单处理。
 
 use std::fs;
+use std::path::Path;
 use std::time::Duration;
 
 use crate::app::App;
 use crate::conf::{self, Doc, Edit};
+use crate::dirs;
 use crate::http::{self, status_code, url_encode, Request, Response};
 use crate::pages::{self, Field, GLOBAL_FIELDS, NEW_SHARE_FIELDS, SHARE_FIELDS};
 use crate::store::{CommitError, CommitInfo, Loaded};
@@ -95,10 +97,22 @@ fn get(app: &App, request: &Request, parts: &[&str]) -> Response {
             Err(response) => response,
         },
         ["shares", "new"] => match load(app) {
-            Ok(loaded) => Response::html(
-                status_code::OK,
-                pages::new_share_page(&view, &app.csrf, &loaded.doc, &loaded.rev, None, None, None),
-            ),
+            Ok(loaded) => {
+                let directories = dirs::candidates();
+                Response::html(
+                    status_code::OK,
+                    pages::new_share_page(
+                        &view,
+                        &app.csrf,
+                        &loaded.doc,
+                        &loaded.rev,
+                        None,
+                        None,
+                        None,
+                        &directories,
+                    ),
+                )
+            }
             Err(response) => response,
         },
         ["shares", name] => match load(app) {
@@ -780,13 +794,24 @@ fn save_share(app: &App, name: &str, form: &[(String, String)]) -> Response {
     if let Err(err) = doc.apply_edits(&section.name, &edits) {
         return pages::bad_request(&app.view(), &err);
     }
+    let path_missing = doc
+        .get(&section.name, "path")
+        .map(|path| !Path::new(path.trim()).is_dir())
+        .unwrap_or(false);
 
     match app.store.commit(&doc, &loaded.rev) {
-        Ok(info) => after_commit(
-            app,
-            &info,
-            &format!("/shares/{}?msg=saved_share", url_encode(&section.name)),
-        ),
+        Ok(info) => {
+            let message = if path_missing {
+                "saved_share_missing_path"
+            } else {
+                "saved_share"
+            };
+            after_commit(
+                app,
+                &info,
+                &format!("/shares/{}?msg={}", url_encode(&section.name), message),
+            )
+        }
         Err(CommitError::Validate(detail)) => {
             let page = pages::share_page(
                 &app.view(),
@@ -816,6 +841,7 @@ fn save_share(app: &App, name: &str, form: &[(String, String)]) -> Response {
 
 fn create_share(app: &App, form: &[(String, String)]) -> Response {
     let view = app.view();
+    let directories = dirs::candidates();
     let Some(rev) = form_value(form, "_rev") else {
         return pages::bad_request(&view, "缺少版本标记，请刷新页面后重试。");
     };
@@ -841,6 +867,7 @@ fn create_share(app: &App, form: &[(String, String)]) -> Response {
                 Some(message),
                 detail,
                 Some(form),
+                &directories,
             ),
         )
     };
@@ -877,12 +904,25 @@ fn create_share(app: &App, form: &[(String, String)]) -> Response {
         return error_page(&err, None);
     }
 
+    let path_missing = params
+        .iter()
+        .find(|(key, _)| key.eq_ignore_ascii_case("path"))
+        .map(|(_, value)| !Path::new(value.trim()).is_dir())
+        .unwrap_or(true);
+
     match app.store.commit(&doc, &loaded.rev) {
-        Ok(info) => after_commit(
-            app,
-            &info,
-            &format!("/shares/{}?msg=created_share", url_encode(&name)),
-        ),
+        Ok(info) => {
+            let message = if path_missing {
+                "created_share_missing_path"
+            } else {
+                "created_share"
+            };
+            after_commit(
+                app,
+                &info,
+                &format!("/shares/{}?msg={}", url_encode(&name), message),
+            )
+        }
         Err(CommitError::Validate(detail)) => Response::html(
             status_code::BAD_REQUEST,
             pages::new_share_page(
@@ -893,6 +933,7 @@ fn create_share(app: &App, form: &[(String, String)]) -> Response {
                 Some("Samba 语法校验未通过，文件未修改。请修正后重试。"),
                 Some(&detail),
                 Some(form),
+                &directories,
             ),
         ),
         Err(CommitError::Conflict) => pages::conflict(&app.view()),

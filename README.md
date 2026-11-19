@@ -44,10 +44,10 @@ sudo ./target/release/samba-ui --conf /etc/samba/smb.conf
 最短路径（发布包已构建好的情况）：
 
 ```sh
-scp dist/samba-ui-0.1.10-armhf.zip root@nas:/tmp/
+scp dist/samba-ui-0.1.11-armhf.zip root@nas:/tmp/
 ssh root@nas
 cd /tmp
-unzip samba-ui-0.1.10-armhf.zip -d samba-ui
+unzip samba-ui-0.1.11-armhf.zip -d samba-ui
 cd samba-ui
 sh deploy/install.sh ./samba-ui-armv7-musl
 vi /etc/samba/samba-ui.env      # 设置 SAMBA_UI_USER / SAMBA_UI_PASSWORD
@@ -132,10 +132,10 @@ ARMv6 只提供 musl 静态版，不需要 Pro/raspi-toolchain，也不需要 AR
 把发布包传到设备并解压：
 
 ```sh
-scp dist/samba-ui-0.1.10-armhf.zip root@nas:/tmp/
+scp dist/samba-ui-0.1.11-armhf.zip root@nas:/tmp/
 ssh root@nas
 cd /tmp
-unzip samba-ui-0.1.10-armhf.zip -d samba-ui
+unzip samba-ui-0.1.11-armhf.zip -d samba-ui
 cd samba-ui
 sh deploy/install.sh ./samba-ui-armv6-musl
 ```
@@ -199,7 +199,7 @@ sudo ./samba-ui-armv7-musl --conf /etc/samba/smb.conf --port 8080
 看到类似日志就成功了：
 
 ```text
-samba-ui v0.1.10 已启动: http://127.0.0.1:8080/
+samba-ui v0.1.11 已启动: http://127.0.0.1:8080/
 配置文件: /etc/samba/smb.conf
 语法校验: testparm；保存后重载: smbcontrol all reload-config
 ```
@@ -418,7 +418,9 @@ sha256sum -c SHA256SUMS
 新建共享：
 
 - 共享名不能是 `global` 或 `new`，不能含 `[ ] / \`。
-- `path` 必填，且必须是服务器上真实存在的目录（服务只检查非空，不检查目录是否存在）。
+- `path` 必填，可以手动输入绝对路径，也可以从“常用目录”下拉或输入框候选里选择。
+- 候选目录来自 `/srv`、`/mnt`、`/media`、`/media/pi`、`/home`、`/data` 以及根目录下的非系统目录，最多 100 项，不递归扫描整个磁盘。
+- `path` 指向的目录不存在时仍会保存，但页面会显示警告；Samba 客户端可能无法访问该共享。
 - 可同时添加任意额外参数。
 
 删除共享：
@@ -519,15 +521,15 @@ cargo test
 cargo build --release
 ```
 
-测试包括 61 个库单元测试和 7 个端到端 HTTP 流程测试（真实监听随机端口、Basic 认证、CSRF、创建/编辑/删除共享、原始编辑、revision 冲突、只读模式、反向代理 Host、`allow-origin`、`Origin: null` 回退、手动重载、用户列表解析、备份预览与回退）。
+测试包括 62 个库单元测试和 7 个端到端 HTTP 流程测试（真实监听随机端口、Basic 认证、CSRF、创建/编辑/删除共享、原始编辑、revision 冲突、只读模式、反向代理 Host、`allow-origin`、`Origin: null` 回退、手动重载、用户列表解析、备份预览与回退）。
 
 ### 发布新版本
 
 版本号以 `Cargo.toml` 为准。修改版本并提交后，打 tag 推送即可自动发布：
 
 ```sh
-git tag v0.1.10
-git push origin v0.1.10
+git tag v0.1.11
+git push origin v0.1.11
 ```
 
 [.github/workflows/release.yml](.github/workflows/release.yml) 会：
@@ -550,6 +552,7 @@ src/
   args.rs      命令行/环境变量
   app.rs       服务装配、监听循环、连接限制
   users.rs     Samba 用户列表解析与 Linux 用户候选筛选
+  dirs.rs      常用目录与挂载点扫描
   routes.rs    路由、表单解析、CSRF/Origin、提交逻辑
   pages.rs     各页面 HTML
   html.rs      页面骨架与表单控件
@@ -566,7 +569,7 @@ tests/         端到端 HTTP 测试
 
 ## 发布包内容
 
-`dist/samba-ui-0.1.10-armhf.zip` 解压后包含：
+`dist/samba-ui-0.1.11-armhf.zip` 解压后包含：
 
 ```
 samba-ui-armv6-musl      ARMv6 静态链接二进制（Pi Zero / Pi 1）
@@ -590,6 +593,7 @@ examples/smb.conf
 - 常用字段留空会删除参数；要写空值请使用“其他参数/新增参数”。
 - 依赖 `testparm` 与 `smbcontrol` 才能做校验和自动重载；没有它们时请加 `--no-testparm --no-reload`。
 - 用户管理依赖 `pdbedit` 和 `smbpasswd`，需要 root；只管理 Samba 账户，不创建/删除 Linux 用户。
+- 新建共享的目录候选只扫描常见目录和挂载点，不递归整个文件系统；深层目录仍可手动输入。
 - 配置回退只还原 `smb.conf`，不还原用户数据库或其他 Samba 状态；备份数量受 `--backups` 限制。
 - 删除共享、修改共享名等操作没有回收站，只有保存前的备份。
 

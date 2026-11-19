@@ -3,6 +3,7 @@
 pub mod app;
 pub mod args;
 pub mod conf;
+pub mod dirs;
 pub mod html;
 pub mod http;
 pub mod pages;

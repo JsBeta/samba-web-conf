@@ -206,23 +206,32 @@ h2 { font-size: 17px; margin: 0 0 12px; }
 
 .dir-tree, .tree-children { list-style: none; margin: 0; padding: 0; }
 .tree-children { padding-left: 18px; }
-.tree-row { display: flex; align-items: center; gap: 4px; }
+.tree-row { display: flex; align-items: center; gap: 4px; min-height: 34px; }
 .tree-toggle {
-  width: 22px;
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
   border: 0;
+  border-radius: 6px;
   background: none;
   color: var(--muted);
   cursor: pointer;
-  padding: 2px 0;
-  font: inherit;
+  font-family: var(--sans);
+  font-size: 12px;
+  line-height: 1;
 }
-.tree-toggle:hover { color: var(--text); }
+.tree-toggle:hover { background: var(--panel-2); color: var(--text); }
+.tree-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .tree-select {
   border: 0;
   background: none;
   color: var(--text);
   cursor: pointer;
-  padding: 4px 6px;
+  padding: 6px 8px;
   border-radius: 6px;
   text-align: left;
   font: inherit;

@@ -658,7 +658,7 @@ pub fn tree_nodes(entries: &[(String, String)], roots: bool) -> String {
             "<li class=\"tree-node\" data-path=\"{path}\">\
              <div class=\"tree-row\">\
                <button type=\"button\" class=\"tree-toggle\" aria-expanded=\"false\" \
-                 aria-label=\"展开子目录\">▸</button>\
+                 aria-label=\"展开子目录\">▶</button>\
                <button type=\"button\" class=\"tree-select\" title=\"{path}\">{label}</button>\
              </div><ul class=\"tree-children\" hidden></ul></li>",
             path = html::escape(path),

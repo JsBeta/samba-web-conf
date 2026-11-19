@@ -647,6 +647,34 @@ pub fn share_page(
     ))
 }
 
+pub fn tree_nodes(entries: &[(String, String)], roots: bool) -> String {
+    if entries.is_empty() {
+        return "<li class=\"tree-empty\">（没有子目录）</li>".to_string();
+    }
+    let mut out = String::new();
+    for (name, path) in entries {
+        let label = if roots { path.as_str() } else { name.as_str() };
+        out.push_str(&format!(
+            "<li class=\"tree-node\" data-path=\"{path}\">\
+             <div class=\"tree-row\">\
+               <button type=\"button\" class=\"tree-toggle\" aria-expanded=\"false\" \
+                 aria-label=\"展开子目录\">▸</button>\
+               <button type=\"button\" class=\"tree-select\" title=\"{path}\">{label}</button>\
+             </div><ul class=\"tree-children\" hidden></ul></li>",
+            path = html::escape(path),
+            label = html::escape(label)
+        ));
+    }
+    out
+}
+
+pub fn tree_error(message: &str) -> String {
+    format!(
+        "<li class=\"tree-empty tree-error\">{}</li>",
+        html::escape(message)
+    )
+}
+
 fn path_field(field: &Field, name: &str, value: &str, directories: &[String]) -> String {
     let mut picker = String::from(
         "<select data-dir-target=\"#share-path\" aria-label=\"从常用目录选择\">\
@@ -669,7 +697,7 @@ fn path_field(field: &Field, name: &str, value: &str, directories: &[String]) ->
          <input id=\"share-path\" type=\"text\" name=\"{}\" value=\"{}\" \
          placeholder=\"/srv/samba/share\" list=\"dir-options\" \
          autocomplete=\"off\" spellcheck=\"false\">\
-         <a class=\"btn small\" href=\"/browse\" data-browse-dir data-dir-target=\"#share-path\">浏览…</a>\
+         <a class=\"btn small\" href=\"/browse\" data-open-tree data-browse-dir data-dir-target=\"#share-path\">浏览…</a>\
          </div>{}",
         html::escape(name),
         html::escape(value),
@@ -750,6 +778,16 @@ pub fn new_share_page(
         }
     }
     body.push_str("</div></div>");
+
+    body.push_str(
+        "<div class=\"card\" id=\"dir-tree-card\" hidden>\
+         <div class=\"card-head\"><h2>目录树</h2>\
+         <a class=\"btn small\" href=\"/browse\">独立浏览页</a></div>\
+         <p class=\"muted\">点击目录名选择，点击箭头展开子目录；目录按需加载，不会扫描整个磁盘。</p>\
+         <ul id=\"dir-tree\" class=\"dir-tree\" data-roots-url=\"/browse/children\"></ul>\
+         <noscript><p class=\"muted\">需要 JavaScript 才能使用目录树，请使用“独立浏览页”或手动输入路径。</p></noscript>\
+         </div>",
+    );
 
     body.push_str("<div class=\"card\"><h2>新增参数</h2>");
     body.push_str(&new_param_rows());

@@ -53,7 +53,7 @@ pub fn roots() -> Vec<PathBuf> {
     let mut roots = Vec::new();
     for directory in FIXED_DIRS {
         let path = PathBuf::from(directory);
-        if path.is_dir() {
+        if path.is_dir() && !is_forbidden(&path) {
             roots.push(path);
         }
     }
@@ -65,7 +65,7 @@ pub fn roots() -> Vec<PathBuf> {
                 continue;
             }
             let path = entry.path();
-            if path.is_dir() {
+            if path.is_dir() && !is_forbidden(&path) {
                 roots.push(path);
             }
         }

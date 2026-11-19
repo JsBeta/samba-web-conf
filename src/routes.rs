@@ -164,6 +164,7 @@ fn get(app: &App, request: &Request, parts: &[&str]) -> Response {
             Err(response) => response,
         },
         ["backups", name] => backup_preview(app, name),
+        ["browse", "children"] => browse_children(request),
         ["browse"] => browse_dirs(app, request),
         ["raw"] => match load(app) {
             Ok(loaded) => Response::html(
@@ -616,6 +617,34 @@ fn toggle_samba_user(app: &App, name: &str, form: &[(String, String)]) -> Respon
             "user_disabled"
         }
     ))
+}
+
+fn browse_children(request: &Request) -> Response {
+    let raw = request
+        .query
+        .iter()
+        .find(|(key, _)| key == "path")
+        .map(|(_, value)| value.trim())
+        .filter(|value| !value.is_empty());
+
+    let Some(raw) = raw else {
+        let entries: Vec<(String, String)> = dirs::roots()
+            .iter()
+            .map(|path| {
+                let path = path.display().to_string();
+                (path.clone(), path)
+            })
+            .collect();
+        return Response::html(status_code::OK, pages::tree_nodes(&entries, true));
+    };
+
+    match dirs::canonical_browse_path(raw) {
+        Ok(path) => match dirs::list_dir(&path) {
+            Ok(entries) => Response::html(status_code::OK, pages::tree_nodes(&entries, false)),
+            Err(message) => Response::html(status_code::OK, pages::tree_error(&message)),
+        },
+        Err(message) => Response::html(status_code::OK, pages::tree_error(&message)),
+    }
 }
 
 fn browse_dirs(app: &App, request: &Request) -> Response {

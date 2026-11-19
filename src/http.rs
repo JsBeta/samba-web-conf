@@ -412,7 +412,7 @@ impl Response {
             .with_header(
                 "Content-Security-Policy",
                 "default-src 'none'; style-src 'self'; script-src 'self'; img-src 'self' data:; \
-             form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
+                 connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
             )
             .with_header("Cache-Control", "no-store")
     }

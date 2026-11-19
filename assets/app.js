@@ -60,6 +60,110 @@
     }
   });
 
+  function initDirTree() {
+    var tree = document.getElementById("dir-tree");
+    if (!tree) {
+      return;
+    }
+    var rootsUrl = tree.getAttribute("data-roots-url") || "/browse/children";
+    var loaded = false;
+
+    function load(container, path) {
+      container.innerHTML = '<li class="tree-empty">加载中…</li>';
+      var url = rootsUrl;
+      if (path) {
+        url += "?path=" + encodeURIComponent(path);
+      }
+      fetch(url, {
+        credentials: "same-origin",
+        headers: { Accept: "text/html" }
+      })
+        .then(function (response) {
+          if (!response.ok) {
+            throw new Error("HTTP " + response.status);
+          }
+          return response.text();
+        })
+        .then(function (html) {
+          container.innerHTML = html;
+        })
+        .catch(function () {
+          container.innerHTML =
+            '<li class="tree-empty tree-error">加载失败，请重试</li>';
+        });
+    }
+
+    document.addEventListener("click", function (event) {
+      var target = event.target;
+      if (!(target instanceof Element)) {
+        return;
+      }
+
+      var opener = target.closest("[data-open-tree]");
+      if (opener) {
+        event.preventDefault();
+        var card = document.getElementById("dir-tree-card");
+        if (!card) {
+          return;
+        }
+        card.hidden = false;
+        if (!loaded) {
+          loaded = true;
+          load(tree, "");
+        }
+        card.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
+
+      var toggle = target.closest(".tree-toggle");
+      if (toggle) {
+        event.preventDefault();
+        var node = toggle.closest(".tree-node");
+        var children = node ? node.querySelector(".tree-children") : null;
+        if (!children) {
+          return;
+        }
+        var expanded = toggle.getAttribute("aria-expanded") === "true";
+        if (expanded) {
+          children.hidden = true;
+          toggle.setAttribute("aria-expanded", "false");
+          toggle.textContent = "▸";
+        } else {
+          children.hidden = false;
+          toggle.setAttribute("aria-expanded", "true");
+          toggle.textContent = "▾";
+          if (!children.dataset.loaded) {
+            children.dataset.loaded = "1";
+            load(children, node.getAttribute("data-path"));
+          }
+        }
+        return;
+      }
+
+      var select = target.closest(".tree-select");
+      if (select) {
+        event.preventDefault();
+        var treeNode = select.closest(".tree-node");
+        var input = document.getElementById("share-path");
+        if (treeNode && input) {
+          input.value = treeNode.getAttribute("data-path") || "";
+          input.focus();
+        }
+        var previous = document.querySelector(".tree-select.selected");
+        if (previous) {
+          previous.classList.remove("selected");
+        }
+        select.classList.add("selected");
+      }
+    });
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initDirTree);
+  } else {
+    initDirTree();
+  }
+
   function localizeTimes() {
     var nodes = document.querySelectorAll("time[data-local-time]");
     var zone = "";

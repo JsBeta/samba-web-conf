@@ -44,10 +44,10 @@ sudo ./target/release/samba-ui --conf /etc/samba/smb.conf
 最短路径（发布包已构建好的情况）：
 
 ```sh
-scp dist/samba-ui-0.1.13-armhf.zip root@nas:/tmp/
+scp dist/samba-ui-0.1.14-armhf.zip root@nas:/tmp/
 ssh root@nas
 cd /tmp
-unzip samba-ui-0.1.13-armhf.zip -d samba-ui
+unzip samba-ui-0.1.14-armhf.zip -d samba-ui
 cd samba-ui
 sh deploy/install.sh ./samba-ui-armv7-musl
 vi /etc/samba/samba-ui.env      # 设置 SAMBA_UI_USER / SAMBA_UI_PASSWORD
@@ -132,10 +132,10 @@ ARMv6 只提供 musl 静态版，不需要 Pro/raspi-toolchain，也不需要 AR
 把发布包传到设备并解压：
 
 ```sh
-scp dist/samba-ui-0.1.13-armhf.zip root@nas:/tmp/
+scp dist/samba-ui-0.1.14-armhf.zip root@nas:/tmp/
 ssh root@nas
 cd /tmp
-unzip samba-ui-0.1.13-armhf.zip -d samba-ui
+unzip samba-ui-0.1.14-armhf.zip -d samba-ui
 cd samba-ui
 sh deploy/install.sh ./samba-ui-armv6-musl
 ```
@@ -199,7 +199,7 @@ sudo ./samba-ui-armv7-musl --conf /etc/samba/smb.conf --port 8080
 看到类似日志就成功了：
 
 ```text
-samba-ui v0.1.13 已启动: http://127.0.0.1:8080/
+samba-ui v0.1.14 已启动: http://127.0.0.1:8080/
 配置文件: /etc/samba/smb.conf
 语法校验: testparm；保存后重载: smbcontrol all reload-config
 ```
@@ -418,7 +418,7 @@ sha256sum -c SHA256SUMS
 新建共享：
 
 - 共享名不能是 `global` 或 `new`，不能含 `[ ] / \`。
-- `path` 必填，可以手动输入绝对路径，也可以从“常用目录”下拉或输入框候选里选择。
+- `path` 必填，可以手动输入绝对路径；点击输入框右侧箭头可从常用目录候选中选择。
 - 路径输入框旁有“浏览…”入口：新建共享页内嵌懒加载目录树，点击箭头按需展开子目录，点击目录名直接回填，不需要来回跳转。
 - 独立 `/browse` 页面保留作为无 JavaScript 回退。
 - 候选目录来自 `/srv`、`/mnt`、`/media`、`/media/pi`、`/home`、`/data` 以及根目录下的非系统目录，最多 100 项，不递归扫描整个磁盘。
@@ -523,15 +523,15 @@ cargo test
 cargo build --release
 ```
 
-测试包括 63 个库单元测试和 7 个端到端 HTTP 流程测试（真实监听随机端口、Basic 认证、CSRF、创建/编辑/删除共享、原始编辑、revision 冲突、只读模式、反向代理 Host、`allow-origin`、`Origin: null` 回退、手动重载、用户列表解析、备份预览与回退、目录浏览）。
+测试包括 64 个库单元测试和 7 个端到端 HTTP 流程测试（真实监听随机端口、Basic 认证、CSRF、创建/编辑/删除共享、原始编辑、revision 冲突、只读模式、反向代理 Host、`allow-origin`、`Origin: null` 回退、手动重载、用户列表解析、备份预览与回退、目录浏览）。
 
 ### 发布新版本
 
 版本号以 `Cargo.toml` 为准。修改版本并提交后，打 tag 推送即可自动发布：
 
 ```sh
-git tag v0.1.13
-git push origin v0.1.13
+git tag v0.1.14
+git push origin v0.1.14
 ```
 
 [.github/workflows/release.yml](.github/workflows/release.yml) 会：
@@ -571,7 +571,7 @@ tests/         端到端 HTTP 测试
 
 ## 发布包内容
 
-`dist/samba-ui-0.1.13-armhf.zip` 解压后包含：
+`dist/samba-ui-0.1.14-armhf.zip` 解压后包含：
 
 ```
 samba-ui-armv6-musl      ARMv6 静态链接二进制（Pi Zero / Pi 1）

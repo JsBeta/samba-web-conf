@@ -676,20 +676,11 @@ pub fn tree_error(message: &str) -> String {
 }
 
 fn path_field(field: &Field, name: &str, value: &str, directories: &[String]) -> String {
-    let mut picker = String::from(
-        "<select data-dir-target=\"#share-path\" aria-label=\"从常用目录选择\">\
-         <option value=\"\">从常用目录选择…</option>",
-    );
     let mut datalist = String::from("<datalist id=\"dir-options\">");
     for directory in directories {
         let escaped = html::escape(directory);
-        picker.push_str(&format!(
-            "<option value=\"{}\">{}</option>",
-            escaped, escaped
-        ));
         datalist.push_str(&format!("<option value=\"{}\"></option>", escaped));
     }
-    picker.push_str("</select>");
     datalist.push_str("</datalist>");
 
     let control = format!(
@@ -697,16 +688,15 @@ fn path_field(field: &Field, name: &str, value: &str, directories: &[String]) ->
          <input id=\"share-path\" type=\"text\" name=\"{}\" value=\"{}\" \
          placeholder=\"/srv/samba/share\" list=\"dir-options\" \
          autocomplete=\"off\" spellcheck=\"false\">\
-         <a class=\"btn small\" href=\"/browse\" data-open-tree data-browse-dir data-dir-target=\"#share-path\">浏览…</a>\
-         </div>{}",
+         <a class=\"btn\" href=\"/browse\" data-open-tree data-browse-dir data-dir-target=\"#share-path\">浏览…</a>\
+         </div>",
         html::escape(name),
-        html::escape(value),
-        picker
+        html::escape(value)
     );
     let hint = if directories.is_empty() {
-        "没有扫描到常用目录，可以直接输入绝对路径。"
+        "没有扫描到常用目录，可以直接输入绝对路径，或点击“浏览…”逐级选择。"
     } else {
-        "可从常用目录选择，也可以直接输入绝对路径。目录不存在时会保存并给出提示。"
+        "点击输入框右侧箭头选择常用目录，也可以直接输入；或点击“浏览…”逐级浏览。"
     };
 
     format!(
@@ -1697,6 +1687,39 @@ mod tests {
         assert!(page.contains("beta"));
         assert!(page.contains("使用此目录"));
         assert!(page.contains("上级"));
+    }
+
+    #[test]
+    fn new_share_path_uses_datalist_and_browse_entry() {
+        let (conf, validator, warnings) = view();
+        let view = View::new(
+            &conf,
+            false,
+            false,
+            &validator,
+            "smbcontrol all reload-config",
+            "/backups",
+            0,
+            &warnings,
+        )
+        .with_csrf("token");
+        let doc = Doc::parse("[global]\n   workgroup = WORKGROUP\n");
+        let directories = vec!["/srv".to_string(), "/mnt/usb".to_string()];
+        let page = new_share_page(
+            &view,
+            "token",
+            &doc,
+            "1-2",
+            None,
+            None,
+            None,
+            None,
+            &directories,
+        );
+        assert!(page.contains("list=\"dir-options\""));
+        assert!(page.contains("<datalist id=\"dir-options\">"));
+        assert!(page.contains("data-open-tree"));
+        assert!(!page.contains("<select data-dir-target"));
     }
 
     #[test]
